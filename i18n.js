@@ -130,13 +130,39 @@
       needNote: 'Add a short note so the coach knows what you mean.', copyPrompt: 'Copy prompt', haveReply: 'I have the reply: Import',
       copied: 'Copied. Paste it into Claude or ChatGPT.', copyFallbackT: 'Copy this prompt', copyFallbackText: 'Select all the text, copy it, then paste it into the AI.',
       presets: {
-        review: 'Check my progress and improve my program', stuck: 'My weights stopped going up', pain: 'Something hurts or feels wrong',
+        review: 'Check my progress and improve my program', newBlock: 'Plan my next block', stuck: 'My weights stopped going up', pain: 'Something hurts or feels wrong',
         swap: "Swap an exercise I don't like or can't do", add: 'Grow a muscle more', shorter: 'Make my workouts shorter', question: 'Just ask a question'
       },
       // profile
       weightF: 'Body weight (kg)', heightF: 'Height (cm)', ageF: 'Age', goalF: 'Goal', experienceF: 'Training experience', injuriesF: 'Injuries or pain',
       prioritiesF: 'Muscles you most want to grow', gymF: 'Gym and equipment', scheduleF: 'Schedule', notesF: 'Anything else',
-      profileHelp: 'The AI coach uses this to tailor its advice. It stays on your phone.', saveProfile: 'Save profile', profileSaved: 'Profile saved.'
+      profileHelp: 'The AI coach uses this to tailor its advice. It stays on your phone.', saveProfile: 'Save profile', profileSaved: 'Profile saved.',
+      // sync
+      relTime: (m) => (m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`),
+      syncT: 'Sync between devices', syncHelp: 'Keeps your phone and computer in step through your own free sync server. The README has the setup steps.',
+      syncUrl: 'Server address', syncCode: 'Sync code', syncCodeHelp: 'Use the same code in your server settings (SYNC_TOKEN) and on every device.',
+      makeCode: 'Make a new code', codeCopied: 'Code copied. Paste it into your server settings as SYNC_TOKEN.',
+      saveSync: 'Save and sync now', syncNow: 'Sync now', turnOff: 'Turn off sync', copyLink: 'Copy link for another device',
+      linkCopied: 'Link copied. Open it on your other device to connect it.', notSetUp: 'Not set up yet.', syncing: 'Syncing…',
+      syncedAgo: (r) => `Last synced ${r}.`, syncErr: (m) => `Couldn't sync: ${m}`,
+      errWrongCode: "the sync code doesn't match the server.", errNoServer: "the server didn't answer. Check the address and that it's running.",
+      errHttps: 'the address must start with https://', errOfflineSync: "you're offline. It syncs when you're back online.", errServer: (c) => `the server said ${c}.`,
+      syncDone: 'Synced.', syncPulled: 'Synced. Workouts from your other device are here now.', connectQ: 'Connect this device to your sync server?',
+      syncOff: 'Sync turned off on this device.', needUrlCode: 'Add the server address and the sync code first.',
+      // block and progress
+      blockCardT: 'Training block', weekOf: (w, n) => `Week ${w} of ${n}`,
+      weeksLeft: (n) => (n === 1 ? '1 week left until your easy week and program check-up.' : `${n} weeks left until your easy week and program check-up.`),
+      lastWeek: 'Last week of this block. Next comes your easy week and a program check-up.',
+      blockDone: 'Block done. Take your easy week, then update your program with the AI coach.',
+      easyLeft: (d) => `Easy week: ${d === 1 ? '1 day' : `${d} days`} left. Then update your program and start a new block.`,
+      notStarted: 'Your first block starts with your first workout.',
+      stCount: { up: (n) => `${n} improving`, flat: (n) => `${n} steady`, stuck: (n) => `${n} stuck`, new: (n) => `${n} new` },
+      seeDetails: 'See details', progressT: 'Progress check',
+      progressHelp: 'Based on your best set each time. Stuck means no new best in the last 3 times you did that exercise.',
+      st: { up: 'Improving', flat: 'Steady', stuck: 'Stuck', new: 'Not enough data', none: 'Not done yet' },
+      needsUpdate: 'Needs an update',
+      whenUpdate: 'Update a session when half or more of its exercises are stuck, or at the end of a block. The AI coach can do it for you.',
+      askStuck: 'Ask the AI coach about stuck exercises', planNext: 'Plan my next block with the AI coach'
     },
 
     ar: {
@@ -240,12 +266,36 @@
       needNote: 'أضف ملاحظة قصيرة ليفهم المدرّب ما تقصد.', copyPrompt: 'انسخ الطلب', haveReply: 'لديّ الرد: استيراد',
       copied: 'تم النسخ. الصقه في Claude أو ChatGPT.', copyFallbackT: 'انسخ هذا الطلب', copyFallbackText: 'حدّد كل النص وانسخه ثم الصقه في المدرّب.',
       presets: {
-        review: 'راجع تقدّمي وحسّن برنامجي', stuck: 'أوزاني توقفت عن الزيادة', pain: 'أشعر بألم أو بشيء غير طبيعي',
+        review: 'راجع تقدّمي وحسّن برنامجي', newBlock: 'خطّط لمرحلتي القادمة', stuck: 'أوزاني توقفت عن الزيادة', pain: 'أشعر بألم أو بشيء غير طبيعي',
         swap: 'استبدل تمرينًا لا أحبه أو لا أستطيعه', add: 'أريد تكبير عضلة معيّنة أكثر', shorter: 'اجعل حصصي أقصر', question: 'عندي سؤال فقط'
       },
       weightF: 'وزن الجسم (كغ)', heightF: 'الطول (سم)', ageF: 'العمر', goalF: 'الهدف', experienceF: 'الخبرة في التدريب', injuriesF: 'إصابات أو آلام',
       prioritiesF: 'العضلات التي تريد تكبيرها أكثر', gymF: 'النادي والأجهزة', scheduleF: 'مواعيد التمرين', notesF: 'أي شيء آخر',
-      profileHelp: 'يستخدمه المدرّب الذكي لتخصيص نصائحه. يبقى على هاتفك.', saveProfile: 'حفظ الملف', profileSaved: 'تم حفظ الملف الشخصي.'
+      profileHelp: 'يستخدمه المدرّب الذكي لتخصيص نصائحه. يبقى على هاتفك.', saveProfile: 'حفظ الملف', profileSaved: 'تم حفظ الملف الشخصي.',
+      relTime: (m) => (m < 1 ? 'الآن' : m < 60 ? `قبل ${m} د` : m < 1440 ? `قبل ${Math.round(m / 60)} س` : `قبل ${A.days(Math.round(m / 1440))}`),
+      syncT: 'المزامنة بين الأجهزة', syncHelp: 'تُبقي هاتفك وحاسوبك متطابقين عبر خادم مزامنة مجاني خاص بك. خطوات الإعداد في ملف README.',
+      syncUrl: 'عنوان الخادم', syncCode: 'رمز المزامنة', syncCodeHelp: 'استخدم نفس الرمز في إعدادات الخادم (SYNC_TOKEN) وعلى كل جهاز.',
+      makeCode: 'أنشئ رمزًا جديدًا', codeCopied: 'تم نسخ الرمز. الصقه في إعدادات الخادم باسم SYNC_TOKEN.',
+      saveSync: 'احفظ وزامن الآن', syncNow: 'زامن الآن', turnOff: 'أوقف المزامنة', copyLink: 'انسخ رابطًا لجهاز آخر',
+      linkCopied: 'تم نسخ الرابط. افتحه على جهازك الآخر لربطه.', notSetUp: 'غير مُعدّة بعد.', syncing: 'جارٍ المزامنة…',
+      syncedAgo: (r) => `آخر مزامنة ${r}.`, syncErr: (m) => `تعذّرت المزامنة: ${m}`,
+      errWrongCode: 'رمز المزامنة لا يطابق الخادم.', errNoServer: 'الخادم لم يستجب. تأكد من العنوان وأنه يعمل.',
+      errHttps: 'يجب أن يبدأ العنوان بـ https://', errOfflineSync: 'لا يوجد اتصال. ستتم المزامنة عند عودة الإنترنت.', errServer: (c) => `ردّ الخادم بالرمز ${c}.`,
+      syncDone: 'تمت المزامنة.', syncPulled: 'تمت المزامنة. حصص جهازك الآخر موجودة الآن.', connectQ: 'ربط هذا الجهاز بخادم المزامنة؟',
+      syncOff: 'أُوقفت المزامنة على هذا الجهاز.', needUrlCode: 'أضف عنوان الخادم ورمز المزامنة أولًا.',
+      blockCardT: 'مرحلة التدريب', weekOf: (w, n) => `الأسبوع ${w} من ${n}`,
+      weeksLeft: (n) => `باقي ${A.weeks(n)} على الأسبوع الخفيف ومراجعة البرنامج.`,
+      lastWeek: 'الأسبوع الأخير في هذه المرحلة. بعده أسبوع خفيف ومراجعة للبرنامج.',
+      blockDone: 'انتهت المرحلة. خذ أسبوعك الخفيف، ثم حدّث برنامجك مع المدرّب الذكي.',
+      easyLeft: (d) => `أسبوع خفيف: باقي ${A.days(d)}. بعده حدّث برنامجك وابدأ مرحلة جديدة.`,
+      notStarted: 'تبدأ مرحلتك الأولى مع أول حصة.',
+      stCount: { up: (n) => `${n} تتحسن`, flat: (n) => `${n} ثابتة`, stuck: (n) => `${n} متوقفة`, new: (n) => `${n} جديدة` },
+      seeDetails: 'التفاصيل', progressT: 'فحص التقدّم',
+      progressHelp: 'بناءً على أفضل مجموعة في كل مرة. «متوقف» يعني لا رقم جديد في آخر 3 مرات أدّيت فيها التمرين.',
+      st: { up: 'يتحسن', flat: 'ثابت', stuck: 'متوقف', new: 'بيانات غير كافية', none: 'لم يُنفَّذ بعد' },
+      needsUpdate: 'يحتاج تحديثًا',
+      whenUpdate: 'حدّث الحصة عندما يتوقف نصف تمارينها أو أكثر، أو في نهاية المرحلة. المدرّب الذكي يمكنه فعل ذلك عنك.',
+      askStuck: 'اسأل المدرّب عن التمارين المتوقفة', planNext: 'خطّط مرحلتي القادمة مع المدرّب'
     }
   };
 

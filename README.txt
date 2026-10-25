@@ -68,11 +68,24 @@ Keep your profile up to date in Settings > Your profile. When your body
 weight changes, update it there; the coach sees the trend.
 
 
-Blocks and easy weeks
----------------------
-Keep repeating Upper A > Lower A > Upper B > Lower B. After 8 weeks
-(you can pick 6 to 12 in Settings) the app suggests an easy week:
-2 sets per exercise and lighter weights. Then a new block starts.
+Blocks, easy weeks and when to change your program
+--------------------------------------------------
+Keep repeating Upper A > Lower A > Upper B > Lower B. The Training block
+card on Today shows how far you are: one bar per week, 8 weeks by default
+(6 to 12 in Settings). When the bar is full, take the easy week (2 sets,
+lighter weights), then let the AI coach plan your next block.
+
+The same card counts your exercises as improving, steady or stuck (no new
+best in the last 3 times). Tap "See details" for each exercise. When half
+or more of a session's exercises are stuck, that session gets a "Needs an
+update" label: ask the AI coach to update it.
+
+
+Sync between phone and computer
+-------------------------------
+Each browser keeps its own copy, so the computer doesn't see what you
+logged on the phone until you set up sync. It takes about 10 minutes and
+is free: follow sync-server/SETUP.txt (in the zip, next to gym-app).
 
 
 Back up to Google Drive

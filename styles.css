@@ -736,3 +736,58 @@ details.howto li { margin-bottom: 6px; }
 @media (prefers-reduced-motion: reduce) {
   .v-stage.mode-play img.b { animation: none !important; opacity: 0; }
 }
+
+/* ---------- Training block card ---------- */
+.block-card {
+  margin-top: 18px; padding: 14px 14px 12px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-l); box-shadow: var(--card-shadow);
+}
+.block-card.due { margin: 6px 0 12px; border-color: color-mix(in srgb, var(--green) 55%, transparent); box-shadow: var(--shadow), 0 0 0 1px color-mix(in srgb, var(--green) 25%, transparent); }
+.bc-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.bc-top b { font-size: 15px; }
+.bc-week { font: 600 18px var(--num); color: var(--muted); display: inline-flex; align-items: center; gap: 4px; }
+:root[lang="ar"] .bc-week { font-family: var(--text); font-size: 14px; }
+.bc-week svg { width: 18px; height: 18px; color: var(--green); }
+.bc-bar { display: flex; align-items: center; gap: 4px; }
+.bc-seg { flex: 1; height: 12px; border-radius: 4px; background: var(--raised-2); overflow: hidden; }
+.bc-seg i { display: block; height: 100%; background: var(--plate); border-radius: 4px; transition: width 0.9s var(--ease); }
+.bc-bar.easy .bc-seg { height: 14px; border-radius: 7px; }
+.bc-bar.easy .bc-seg i { background: var(--green); }
+[dir="rtl"] .bc-seg { display: flex; justify-content: flex-start; }
+.bc-leaf { width: 26px; height: 26px; flex: none; border-radius: 8px; display: grid; place-items: center; color: var(--muted); background: var(--raised); margin-inline-start: 2px; }
+.bc-leaf svg { width: 16px; height: 16px; }
+.bc-leaf.due { background: var(--green); color: var(--on-green); animation: pop 0.6s var(--spring); }
+.bc-txt { font-size: 14.5px; margin: 10px 0 0; }
+.bc-actions { margin-top: 10px; }
+.bc-stats {
+  width: 100%; margin-top: 12px; padding: 10px 0 2px; border: 0; border-top: 1px solid var(--line); background: none;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; text-align: start;
+}
+.bc-more { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 13.5px; font-weight: 600; color: var(--plate); }
+.bc-more svg { width: 16px; height: 16px; transform: rotate(-90deg); }
+[dir="rtl"] .bc-more svg { transform: rotate(90deg); }
+.pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap; background: var(--raised); color: var(--muted); }
+.pill svg { width: 13px; height: 13px; }
+.pill.up { background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--green); }
+.pill.stuck { background: color-mix(in srgb, var(--yellow) 22%, transparent); color: color-mix(in srgb, var(--yellow) 70%, var(--ink)); }
+.pill.flat { background: var(--raised); color: var(--muted); }
+.pill.new, .pill.none { background: transparent; border: 1px dashed var(--line-2); color: var(--muted); }
+.sync-line { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin: 10px 0 0; }
+.sync-line svg { width: 14px; height: 14px; }
+
+/* ---------- Progress check ---------- */
+.pg-sec { margin-top: 14px; }
+.pg-head { display: flex; align-items: center; gap: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.pg-head b { font: 700 20px var(--cond); }
+.pg-list { list-style: none; margin: 0; padding: 0; }
+.pg-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.pg-name { display: block; font-weight: 600; line-height: 1.3; font-size: 15px; }
+.pg-last { display: block; font-size: 14px; color: var(--muted); margin-top: 1px; }
+.pk-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+
+/* ---------- Sync settings ---------- */
+.sync-box .grow b { display: flex; align-items: center; gap: 6px; }
+.sync-box .grow b svg { width: 18px; height: 18px; color: var(--plate); }
+.sync-box .field { flex: 1 1 100%; margin: 4px 0 0; }
+.sync-box .row { flex: 1 1 100%; }
+.sync-status { flex: 1 1 100%; margin: 2px 0 0; }

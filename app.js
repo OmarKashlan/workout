@@ -52,6 +52,10 @@
     share: `${s1} stroke-width="2.1"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>`,
     user: `${s1} stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`,
     up: `${s1} stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg>`,
+    flat: `${s1} stroke-width="2.6"><path d="M5 12h14"/></svg>`,
+    stuck: `${s1} stroke-width="2.6"><path d="M9 6v12M15 6v12"/></svg>`,
+    dot: `${s1} stroke-width="2"><circle cx="12" cy="12" r="3.5"/></svg>`,
+    sync: `${s1} stroke-width="2.1"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>`,
     down: `${s1} stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>`,
     edit: `${s1} stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>`,
     x: `${s1} stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18"/></svg>`,
@@ -74,17 +78,19 @@
   let current = load(KEYS.current);
   let body = load(KEYS.body) || [];
   const RATIOS = load(KEYS.ratios) || {};
-  const SETTINGS_DEFAULT = { wakeLock: true, theme: 'dark', lang: 'en', blockWeeks: 8, blockStart: null, deload: null };
+  const SETTINGS_DEFAULT = { wakeLock: true, theme: 'dark', lang: 'en', blockWeeks: 8, blockStart: null, deload: null, sharedAt: 0, sync: null };
   let settings = Object.assign({}, SETTINGS_DEFAULT, load(KEYS.settings) || {});
   settings.profile = Object.assign({}, DEFAULT_PROFILE, settings.profile || {});
   if (!body.length && settings.profile.weight) body = [{ t: Date.now(), kg: +settings.profile.weight }];
   const ui = { tab: 'today', open: null, override: null, histMode: 'sessions', histOpen: null, intro: true, viewAnim: false, flash: null, justOpened: null, popPlate: null, coach: 'review' };
 
-  const saveProgram = () => save(KEYS.program, program);
-  const saveLog = () => save(KEYS.log, log);
+  // Saves that other devices should see also schedule a sync.
+  const saveProgram = () => { program.updatedAt = Date.now(); save(KEYS.program, program); scheduleSync(); };
+  const saveLog = () => { save(KEYS.log, log); scheduleSync(1200); };
   const saveCurrent = () => save(KEYS.current, current);
   const saveSettings = () => save(KEYS.settings, settings);
-  const saveBody = () => save(KEYS.body, body);
+  const saveBody = () => { save(KEYS.body, body); scheduleSync(); };
+  const saveShared = () => { settings.sharedAt = Date.now(); saveSettings(); scheduleSync(); };
 
   // Older saved programs don't have the Arabic text yet: copy it from the default program.
   function migrateProgram() {
@@ -100,7 +106,7 @@
         if (de && !e.ar && de.name === e.name) { e.ar = clone(de.ar); changed = true; }
       });
     });
-    if (changed) saveProgram();
+    if (changed) save(KEYS.program, program);
   }
   if (program.sessions) migrateProgram();
 
@@ -197,7 +203,7 @@
     if (settings.deload && Date.now() >= settings.deload.end) {
       settings.blockStart = settings.deload.end;
       settings.deload = null;
-      saveSettings();
+      saveShared();
     }
   }
   const blockStart = () => settings.blockStart || firstLogged();
@@ -543,7 +549,7 @@
     }
     const undone = (s ? s.exercises : []).filter((ex) => !(current.ex[ex.id] || {}).done).length;
     if (undone && !confirm(t('notFinished', undone))) return;
-    const done = { id: `w${current.start}`, sessionId: current.sessionId, name: s ? s.name : 'Workout', color: s ? s.color : 'red', start: current.start, end: Date.now(), entries };
+    const done = { id: `w${current.start}`, sessionId: current.sessionId, name: s ? s.name : 'Workout', color: s ? s.color : 'red', start: current.start, end: Date.now(), entries, ...(deloadActive() ? { easy: true } : {}) };
     log.sessions.push(done);
     saveLog();
     current = null; saveCurrent();
@@ -608,7 +614,11 @@
     try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* not allowed */ }
   }
   function wakeOff() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { wakeOn(); tick(); } });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    wakeOn(); tick();
+    if (syncReady() && Date.now() - (settings.sync.lastSync || 0) > 60000) scheduleSync(300);
+  });
 
   // ---------- Views ----------
   const prevFrac = {};
@@ -651,14 +661,103 @@
       dots.push(`<span class="day${w ? ' on' : ''}${k === 0 ? ' today' : ''}"${w ? ` data-plate="${plateOf(w)}"` : ''} style="--d:${13 - k}" title="${esc(fmtDate(d.getTime()) + (w ? ` ${workoutName(w)}` : ''))}"></span>`);
     }
     const lastTxt = last ? ` <span>${esc(t('lastShort', workoutName(last), relDay(last.start)))}</span>` : '';
-    const wk = blockWeek();
-    const blockTxt = wk && !deloadActive() ? `<p class="block-line">${esc(t('blockLine', wk, settings.blockWeeks || 8, roundsInBlock()))}</p>` : '';
     return `<div class="streak${ui.intro ? ' intro' : ''}">
       <p class="streak-txt">${esc(t('streakHead', count))}${lastTxt}</p>
       <div class="days" aria-hidden="true">${dots.join('')}</div>
       <div class="days-lbl" aria-hidden="true"><span>${t('twoWeeksAgo')}</span><span>${t('todayLbl')}</span></div>
-      ${blockTxt}
+      ${syncReady() && settings.sync.lastSync ? `<p class="sync-line">${ICON.sync}${esc(t('syncedAgo', t('relTime', Math.floor((Date.now() - settings.sync.lastSync) / 60000))))}</p>` : ''}
     </div>`;
+  }
+
+  // ---------- Block progress and exercise status ----------
+  function scoreOf(sets, noWeight) {
+    if (noWeight) return [0, Math.max(0, ...sets.map((x) => +x.r || 0))];
+    const ws = sets.filter((x) => x.w != null && x.w !== '');
+    if (!ws.length) return [-Infinity, Math.max(0, ...sets.map((x) => +x.r || 0))];
+    const w = Math.max(...ws.map((x) => +x.w));
+    return [w, Math.max(...ws.filter((x) => +x.w === w).map((x) => +x.r || 0))];
+  }
+  const better = (a, b) => a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
+  // up: the latest time was a new best. stuck: no new best in the last 3 times. Easy-week sessions are ignored.
+  function statusOf(rows, noWeight) {
+    if (!rows.length) return 'none';
+    if (rows.length === 1) return 'new';
+    let bi = 0;
+    rows.forEach((r, i) => { if (better(scoreOf(r.sets, noWeight), scoreOf(rows[bi].sets, noWeight))) bi = i; });
+    const since = rows.length - 1 - bi;
+    return since === 0 ? 'up' : since >= 3 ? 'stuck' : 'flat';
+  }
+  function exStatuses() {
+    const out = new Map();
+    exerciseHistory().forEach((v, id) => out.set(id, statusOf(v.rows.filter((r) => !r.easy), v.noWeight)));
+    return out;
+  }
+  function sessionNeedsUpdate(s, status) {
+    const st = s.exercises.map((ex) => status.get(ex.id) || 'none');
+    const judged = st.filter((x) => x === 'up' || x === 'flat' || x === 'stuck').length;
+    const stuck = st.filter((x) => x === 'stuck').length;
+    return stuck >= 2 && stuck * 2 >= judged;
+  }
+  const ST_ICON = { up: 'trend', flat: 'flat', stuck: 'stuck', new: 'dot', none: 'dot' };
+  function blockCard(due) {
+    const total = settings.blockWeeks || 8;
+    const status = exStatuses();
+    const ids = [...new Set(sessions().flatMap((s) => s.exercises.map((e) => e.id)))];
+    const counts = { up: 0, flat: 0, stuck: 0, new: 0 };
+    ids.forEach((id) => { const st = status.get(id); if (st && counts[st] !== undefined) counts[st]++; });
+    const fillSeg = (f) => `<span class="bc-seg"><i style="width:${ui.intro ? 0 : (f * 100).toFixed(1)}%" data-prop="width" data-to="${(f * 100).toFixed(1)}%"></i></span>`;
+    let right = '', bar = '', txt = '', actions = '';
+    if (deloadActive()) {
+      const left = settings.deload.end - Date.now();
+      right = `<span class="bc-week">${ICON.leaf}</span>`;
+      bar = `<div class="bc-bar easy">${fillSeg(Math.min(1, Math.max(0, 1 - left / (7 * DAY))))}</div>`;
+      txt = t('easyLeft', Math.max(1, Math.ceil(left / DAY)));
+      actions = `<button class="btn sm primary" data-act="coach-sheet" data-preset="newBlock">${ICON.sparkle}${t('planNext')}</button>`;
+    } else {
+      const b = blockStart();
+      const dayIn = b ? Math.max(0, (startOfDay(Date.now()) - startOfDay(b)) / DAY + 1) : 0;
+      const wk = blockWeek();
+      right = wk ? `<span class="bc-week">${esc(t('weekOf', Math.min(wk, total), total))}</span>` : '';
+      bar = `<div class="bc-bar">${Array.from({ length: total }, (_, i) => fillSeg(Math.min(1, Math.max(0, dayIn / 7 - i)))).join('')}<span class="bc-leaf${due ? ' due' : ''}" title="${esc(t('startEasy'))}">${ICON.leaf}</span></div>`;
+      if (!wk) txt = t('notStarted');
+      else if (due) {
+        txt = t('blockDone');
+        actions = `<button class="btn sm primary" data-act="deload-start">${ICON.leaf}${t('startEasy')}</button><button class="btn sm soft" data-act="coach-sheet" data-preset="newBlock">${ICON.sparkle}${t('planNext')}</button>`;
+      } else {
+        const weeksLeft = Math.ceil((total * 7 - dayIn + 1) / 7);
+        txt = weeksLeft <= 1 ? t('lastWeek') : t('weeksLeft', weeksLeft);
+      }
+    }
+    const statKeys = ['up', 'flat', 'stuck', 'new'].filter((k) => counts[k]);
+    const stats = statKeys.length ? `<button class="bc-stats" data-act="progress-sheet">${statKeys.map((k) => `<span class="pill ${k}">${ICON[ST_ICON[k]]}${esc(t('stCount')[k](counts[k]))}</span>`).join('')}<span class="bc-more">${t('seeDetails')}${ICON.chev}</span></button>` : '';
+    return `<section class="block-card${due ? ' due' : ''}${ui.intro ? ' intro' : ''}">
+      <div class="bc-top"><b>${t('blockCardT')}</b>${right}</div>
+      ${bar}
+      <p class="bc-txt">${esc(txt)}</p>
+      ${actions ? `<div class="row wrap bc-actions">${actions}</div>` : ''}
+      ${stats}
+    </section>`;
+  }
+  function topLabel(sets, noWeight) {
+    const [w, r] = scoreOf(sets, noWeight);
+    return noWeight || !isFinite(w) ? `${r}` : `${fmtWeight(w)}×${r}`;
+  }
+  function sheetProgress() {
+    const status = exStatuses();
+    const hist = exerciseHistory();
+    const secs = sessions().map((s) => {
+      const rows = s.exercises.map((ex) => {
+        const st = status.get(ex.id) || 'none';
+        const v = hist.get(ex.id);
+        const last = v ? v.rows.filter((r) => !r.easy).slice(-4).map((r) => topLabel(r.sets, v.noWeight)).join(' → ') : '';
+        return `<li class="pg-row"><span class="grow"><span class="pg-name">${esc(exName(ex))}</span>${last ? `<bdi dir="ltr" class="pg-last num">${esc(last)}</bdi>` : ''}</span><span class="pill ${st}">${ICON[ST_ICON[st]]}${esc(t('st')[st])}</span></li>`;
+      }).join('');
+      return `<section class="pg-sec" data-plate="${plateOf(s)}"><div class="pg-head"><span class="pchip" aria-hidden="true"></span><b class="grow">${esc(sName(s))}</b>${sessionNeedsUpdate(s, status) ? `<span class="pill stuck">${t('needsUpdate')}</span>` : ''}</div><ul class="pg-list">${rows}</ul></section>`;
+    }).join('');
+    openSheet(`<h3>${t('progressT')}</h3><p class="small muted">${t('progressHelp')}</p>${secs}
+      <p class="small" style="margin-top:14px">${t('whenUpdate')}</p>
+      <button class="btn primary wide" data-act="coach-sheet" data-preset="stuck">${ICON.sparkle}${t('askStuck')}</button>
+      <button class="btn ghost wide" data-act="close-sheet">${t('doneBtn')}</button>`);
   }
 
   function thumbHTML(ex) {
@@ -679,9 +778,9 @@
     let notes = '';
     if (deloadActive()) {
       notes += `<div class="note">${ICON.leaf}<span>${esc(t('easyActive', fmtDate(settings.deload.end)))}<br><button class="linkish" data-act="deload-end">${t('endEasy')}</button></span></div>`;
-    } else if (blockWeek() > (settings.blockWeeks || 8)) {
-      notes += `<div class="note">${ICON.leaf}<span>${esc(t('deloadSuggest', blockWeek() - 1))}<br><button class="linkish" data-act="deload-start">${t('startEasy')}</button></span></div>`;
     }
+    const blockDue = !deloadActive() && blockWeek() > (settings.blockWeeks || 8);
+    const bc = blockCard(blockDue);
     if (last && daysAgo(last.start) >= 7) notes += `<div class="note">${ICON.clock}<span>${esc(t('gapNote', daysAgo(last.start)))}</span></div>`;
     if (!deloadActive() && rampActive() && s.exercises.some((e) => e.sets >= 4)) {
       notes += `<div class="note">${ICON.trend}<span>${esc(t('rampNote', (program.rampIn && program.rampIn.weeks) || 2, (program.rampIn && program.rampIn.maxSets) || 3))}</span></div>`;
@@ -701,10 +800,12 @@
         ${sFocus(s) ? `<p class="hero-focus">${esc(sFocus(s))}</p>` : ''}
       </section>
       ${notes}
+      ${blockDue ? bc : ''}
       <button class="btn primary big" data-act="start" data-session="${esc(s.id)}">${esc(t('startX', sName(s)))}</button>
       ${ui.override
         ? `<button class="btn ghost wide" data-act="clear-override">${esc(t('goBackTo', sName(sessionById(nextSessionId()))))}</button>`
         : `<button class="btn ghost wide" data-act="pick-sheet">${t('differentSession')}</button>`}
+      ${blockDue ? '' : bc}
       ${streak(last)}
       <h3 class="sub">${esc(t('nExercises', s.exercises.length))}</h3>
       <ul class="preview-list${ui.intro ? ' intro' : ''}">${items}</ul>`;
@@ -859,7 +960,7 @@
     const byEx = new Map();
     [...log.sessions].sort((a, b) => a.start - b.start).forEach((w) => w.entries.forEach((e) => {
       if (!byEx.has(e.exId)) byEx.set(e.exId, { name: e.name, noWeight: e.noWeight, rows: [] });
-      const v = byEx.get(e.exId); v.name = e.name; v.rows.push({ date: w.start, sets: e.sets });
+      const v = byEx.get(e.exId); v.name = e.name; v.rows.push({ date: w.start, sets: e.sets, easy: !!w.easy });
     }));
     byEx.forEach((v, id) => { const ex = exById(id); v.label = ex ? exName(ex) : v.name; });
     return byEx;
@@ -926,6 +1027,7 @@
       ${segRow(t('blockT'), esc(t('blockHelp', settings.blockWeeks || 8)), 'block-weeks', 'weeks', [[6, '6'], [8, '8'], [10, '10'], [12, '12']], settings.blockWeeks || 8)}
       <div class="opt-row"><div class="grow"><span class="small muted">${deloadActive() ? esc(t('easyActive', fmtDate(settings.deload.end))) : ''}</span></div>
         ${deloadActive() ? `<button class="btn sm soft" data-act="deload-end">${t('endEasy')}</button>` : `<button class="btn sm soft" data-act="deload-start">${ICON.leaf}${t('easyNow')}</button>`}</div>
+      ${syncBox()}
       <div class="opt-row"><div class="grow"><b>${t('photosT')}</b><span class="small muted" id="photo-status">${t('checking')}</span></div>
         <button class="btn sm soft" data-act="prefetch">${t('downloadNow')}</button></div>
       <div class="opt-row stack"><div class="grow"><b>${t('backupT')}</b><span class="small muted">${t('backupHelp')}</span></div>
@@ -1040,13 +1142,14 @@
   function sheetPick() {
     const nextId = nextSessionId();
     const sel = ui.override || nextId;
+    const status = exStatuses();
     const items = sessions().map((s) => {
       const last = log.sessions.filter((w) => w.sessionId === s.id).sort((a, b) => b.start - a.start)[0];
       const meta = [t('nExercises', s.exercises.length), last ? t('lastDone', relDay(last.start)) : t('notDoneYet')].join(comma());
       return `<li><button class="pick-card${s.id === sel ? ' sel' : ''}" data-plate="${plateOf(s)}" data-act="pick" data-session="${esc(s.id)}">
         <span class="pchip lg" aria-hidden="true"></span>
         <span class="grow"><span class="pk-name">${esc(sName(s))}</span>${sFocus(s) ? `<span class="pk-focus">${esc(sFocus(s))}</span>` : ''}<span class="pk-meta">${esc(meta)}</span></span>
-        ${s.id === nextId ? `<span class="pk-badge">${t('nextUp')}</span>` : ''}
+        <span class="pk-badges">${s.id === nextId ? `<span class="pk-badge">${t('nextUp')}</span>` : ''}${sessionNeedsUpdate(s, status) ? `<span class="pill stuck">${t('needsUpdate')}</span>` : ''}</span>
       </button></li>`;
     }).join('');
     openSheet(`<h3>${t('pickSession')}</h3><ul class="pick-list">${items}</ul>`);
@@ -1223,7 +1326,7 @@
       body.push({ t: Date.now(), kg: w });
       saveBody();
     }
-    saveSettings();
+    saveShared();
     closeSheet();
     render();
     toast(t('profileSaved'));
@@ -1232,6 +1335,7 @@
   // ---------- AI coach ----------
   const PRESET_TEXT = {
     review: 'Look at my progress and my program and tell me what to improve. Update my program if something should change.',
+    newBlock: 'I finished a training block. Plan my next block: keep the exercises that are still improving, swap or change the ones that are stuck, and adjust sets or reps if needed. Send the full updated program.',
     stuck: 'My weights have stopped going up on some exercises. Find which ones from my log and tell me how to get them moving again. Update the program if needed.',
     pain: 'Something hurts or feels wrong (see my note). Tell me what to change so I can keep training around it safely, and when I should see a doctor or physiotherapist instead. Update the program if exercises should be swapped.',
     swap: "I want to swap an exercise (see my note). Suggest the best replacement for my goals, my back and my gym, and update the program.",
@@ -1339,6 +1443,10 @@
       }
     });
     if (notLogged.length) add(`Not logged yet: ${notLogged.join(', ')}.`);
+    const stat = exStatuses();
+    const named = (k) => [...inProgram].filter((id) => stat.get(id) === k).map((id) => exById(id).name);
+    add(`Improving (new best the last time): ${named('up').join(', ') || 'none'}.`);
+    add(`Stuck (no new best in the last 3 times, easy weeks ignored): ${named('stuck').join(', ') || 'none'}.`);
     const old = [...hist.entries()].filter(([id]) => !inProgram.has(id));
     if (old.length) add(`Logged before but no longer in my program: ${old.map(([, v]) => `${v.name} (last ${enSets(v.rows[v.rows.length - 1].sets, v.noWeight)})`).join('; ')}.`);
     add();
@@ -1573,6 +1681,7 @@
       settings.profile = Object.assign({}, DEFAULT_PROFILE, settings.profile || {});
       for (const [k, url] of Object.entries(data.photos || {})) await idb.put(k, await (await fetch(url)).blob());
       migrateProgram();
+      settings.sharedAt = Date.now();
       saveProgram(); saveLog(); saveSettings(); saveBody();
       applyLang(); applyTheme();
       render();
@@ -1589,6 +1698,171 @@
     const key = `p${Date.now()}`;
     await idb.put(key, blob);
     return key;
+  }
+
+  // ---------- Sync between devices ----------
+  // Everything except the in-progress workout and device-only settings (theme, language, screen) is synced.
+  const SHARED_KEYS = ['profile', 'blockWeeks', 'blockStart', 'deload'];
+  let syncTimer = null, syncBusy = false, syncAgain = false, syncState = null, pendingRender = false;
+  const syncReady = () => !!(settings.sync && settings.sync.url && settings.sync.code);
+  function scheduleSync(delay = 2500) {
+    if (!syncReady()) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => runSync(false), delay);
+  }
+  function localPayload() {
+    const shared = {};
+    SHARED_KEYS.forEach((k) => { shared[k] = settings[k] === undefined ? null : settings[k]; });
+    return { v: 1, program, programAt: program.updatedAt || 0, log: { sessions: log.sessions, deleted: log.deleted || [] }, shared, sharedAt: settings.sharedAt || 0, body };
+  }
+  function mergePayload(a, b) {
+    if (!b || !b.log) return a;
+    const deleted = new Set([...(a.log.deleted || []), ...(b.log.deleted || [])]);
+    const byId = new Map();
+    (b.log.sessions || []).forEach((w) => byId.set(w.id, w));
+    a.log.sessions.forEach((w) => byId.set(w.id, w));
+    const sessionsOut = [...byId.values()].filter((w) => !deleted.has(w.id)).sort((x, y) => x.start - y.start);
+    const days = new Map();
+    [...(b.body || []), ...(a.body || [])].sort((x, y) => x.t - y.t).forEach((x) => days.set(startOfDay(x.t), x));
+    const progA = (a.programAt || 0) > (b.programAt || 0) || !b.program;
+    const sharedA = (a.sharedAt || 0) > (b.sharedAt || 0) || !b.shared;
+    return {
+      v: 1,
+      program: progA ? a.program : b.program, programAt: Math.max(a.programAt || 0, b.programAt || 0),
+      log: { sessions: sessionsOut, deleted: [...deleted].sort() },
+      shared: sharedA ? a.shared : b.shared, sharedAt: Math.max(a.sharedAt || 0, b.sharedAt || 0),
+      body: [...days.values()]
+    };
+  }
+  function applyPayload(m) {
+    const before = JSON.stringify(localPayload());
+    program = clone(m.program);
+    if (m.programAt) program.updatedAt = m.programAt;
+    migrateProgram();
+    log = { sessions: clone(m.log.sessions), deleted: [...m.log.deleted] };
+    SHARED_KEYS.forEach((k) => { if (m.shared && k in m.shared) settings[k] = clone(m.shared[k]); });
+    settings.profile = Object.assign({}, DEFAULT_PROFILE, settings.profile || {});
+    settings.sharedAt = m.sharedAt || 0;
+    body = clone(m.body || []);
+    save(KEYS.program, program); save(KEYS.log, log); save(KEYS.body, body); saveSettings();
+    return JSON.stringify(localPayload()) !== before;
+  }
+  function normUrl(u) {
+    return String(u || '').trim().replace(/\/v1\/data\/?$/, '').replace(/\/+$/, '');
+  }
+  function urlProblem(u) {
+    if (!u) return t('needUrlCode');
+    if (/^https:\/\//i.test(u) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(u)) return '';
+    return t('errHttps');
+  }
+  async function syncApi(method, payload) {
+    const c = settings.sync;
+    let res;
+    try {
+      res = await fetch(`${c.url}/v1/data`, {
+        method, cache: 'no-store',
+        headers: Object.assign({ Authorization: `Bearer ${c.code}` }, payload ? { 'Content-Type': 'application/json' } : {}),
+        body: payload ? JSON.stringify(payload) : undefined
+      });
+    } catch (e) { throw new Error(t('errNoServer')); }
+    if (res.status === 401 || res.status === 403) throw new Error(t('errWrongCode'));
+    const data = await res.json().catch(() => null);
+    if (!res.ok && res.status !== 409) throw new Error(t('errServer', res.status));
+    return { status: res.status, data };
+  }
+  function syncStatusText() {
+    if (!syncReady()) return t('notSetUp');
+    if (syncState === 'busy') return t('syncing');
+    if (settings.sync.lastError) return t('syncErr', settings.sync.lastError);
+    if (settings.sync.lastSync) return t('syncedAgo', t('relTime', Math.floor((Date.now() - settings.sync.lastSync) / 60000)));
+    return '';
+  }
+  function showSyncStatus() { const el = $('#sync-status'); if (el) el.textContent = syncStatusText(); }
+  async function runSync(manual) {
+    if (!syncReady()) { if (manual) toast(t('needUrlCode')); return; }
+    if (!navigator.onLine) { if (manual) toast(t('syncErr', t('errOfflineSync'))); return; }
+    if (syncBusy) { syncAgain = true; return; }
+    syncBusy = true; syncState = 'busy'; showSyncStatus();
+    const countBefore = log.sessions.length;
+    let changed = false;
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const got = await syncApi('GET');
+        const remote = got.data && typeof got.data === 'object' ? got.data : { rev: 0, data: null };
+        const merged = mergePayload(localPayload(), remote.data);
+        if (applyPayload(merged)) changed = true;
+        if (remote.data && JSON.stringify(merged) === JSON.stringify(remote.data)) break;
+        const put = await syncApi('PUT', { baseRev: remote.rev || 0, data: merged });
+        if (put.status === 409) continue;
+        break;
+      }
+      settings.sync.lastSync = Date.now();
+      settings.sync.lastError = null;
+      if (manual || log.sessions.length > countBefore) toast(log.sessions.length > countBefore ? t('syncPulled') : t('syncDone'));
+    } catch (e) {
+      settings.sync.lastError = e.message;
+      if (manual) toast(t('syncErr', e.message));
+    } finally {
+      saveSettings();
+      syncBusy = false; syncState = null;
+      showSyncStatus();
+      if (changed) {
+        const a = document.activeElement;
+        if (a && a.matches('input, textarea, select')) pendingRender = true; else render();
+      }
+      if (syncAgain) { syncAgain = false; scheduleSync(500); }
+    }
+  }
+  document.addEventListener('focusout', () => { if (pendingRender) setTimeout(() => { const a = document.activeElement; if (pendingRender && !(a && a.matches('input, textarea, select'))) { pendingRender = false; render(); } }, 200); });
+  window.addEventListener('online', () => scheduleSync(800));
+  function makeSyncCode() {
+    const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const code = [...bytes].map((b) => abc[b % abc.length]).join('');
+    const inp = $('#sync-code');
+    if (inp) inp.value = code;
+    navigator.clipboard.writeText(code).then(() => toast(t('codeCopied')), () => {});
+  }
+  function saveSyncSettings() {
+    const url = normUrl(($('#sync-url') || {}).value);
+    const code = String(($('#sync-code') || {}).value || '').trim();
+    const problem = urlProblem(url) || (code ? '' : t('needUrlCode'));
+    if (problem) { toast(problem); return; }
+    settings.sync = { url, code, lastSync: null, lastError: null };
+    saveSettings();
+    render();
+    runSync(true);
+  }
+  function syncLink() {
+    return `${location.origin}${location.pathname}#sync=${encodeURIComponent(settings.sync.url)}&code=${encodeURIComponent(settings.sync.code)}`;
+  }
+  function copySyncLink() {
+    const link = syncLink();
+    navigator.clipboard.writeText(link).then(() => toast(t('linkCopied')), () => {
+      openSheet(`<h3>${t('copyLink')}</h3><label class="field"><textarea rows="4" readonly id="link-text" dir="ltr">${esc(link)}</textarea></label><button class="btn ghost wide" data-act="close-sheet">${t('doneBtn')}</button>`);
+      const ta = $('#link-text'); ta.focus(); ta.select();
+    });
+  }
+  function readSyncLink() {
+    if (!location.hash.startsWith('#sync=')) return;
+    const p = new URLSearchParams(location.hash.slice(1));
+    const url = normUrl(p.get('sync')), code = (p.get('code') || '').trim();
+    history.replaceState(null, '', location.pathname + location.search);
+    if (url && code && !urlProblem(url) && confirm(t('connectQ'))) {
+      settings.sync = { url, code, lastSync: null, lastError: null };
+      saveSettings();
+      runSync(true);
+    }
+  }
+  function syncBox() {
+    const c = settings.sync || {};
+    return `<div class="opt-row stack sync-box"><div class="grow"><b>${ICON.sync}${t('syncT')}</b><span class="small muted">${t('syncHelp')}</span></div>
+      <label class="field"><span>${t('syncUrl')}</span><input id="sync-url" type="url" dir="ltr" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://workout-sync.yourname.workers.dev" value="${esc(c.url || '')}"></label>
+      <label class="field"><span>${t('syncCode')}</span><input id="sync-code" dir="ltr" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(c.code || '')}"><span class="help">${t('syncCodeHelp')}</span></label>
+      <div class="row wrap"><button class="btn sm primary" data-act="sync-save">${t('saveSync')}</button><button class="btn sm soft" data-act="sync-make">${t('makeCode')}</button></div>
+      ${syncReady() ? `<div class="row wrap"><button class="btn sm soft" data-act="sync-now">${ICON.sync}${t('syncNow')}</button><button class="btn sm soft" data-act="sync-link">${t('copyLink')}</button><button class="btn sm ghost danger" data-act="sync-off">${t('turnOff')}</button></div>` : ''}
+      <p class="small muted sync-status" id="sync-status">${esc(syncStatusText())}</p>
+    </div>`;
   }
 
   // ---------- Render ----------
@@ -1689,9 +1963,9 @@
       case 'discard': discardWorkout(); break;
       case 'hist-mode': ui.histMode = el.dataset.mode; ui.histOpen = null; ui.intro = true; render(); break;
       case 'hist-open': ui.histOpen = ui.histOpen === el.dataset.id ? null : el.dataset.id; render(); break;
-      case 'hist-del': if (confirm(t('deleteWorkoutQ'))) { log.sessions = log.sessions.filter((w) => w.id !== el.dataset.id); saveLog(); ui.histOpen = null; render(); } break;
+      case 'hist-del': if (confirm(t('deleteWorkoutQ'))) { log.deleted = [...(log.deleted || []), el.dataset.id]; log.sessions = log.sessions.filter((w) => w.id !== el.dataset.id); saveLog(); ui.histOpen = null; render(); } break;
       case 'close-sheet': if (e.target === el || el.tagName === 'BUTTON') closeSheet(); break;
-      case 'coach-sheet': sheetCoach(); break;
+      case 'coach-sheet': if (el.dataset.preset) ui.coach = el.dataset.preset; sheetCoach(); break;
       case 'coach-preset': ui.coach = el.dataset.preset; el.parentElement.querySelectorAll('.opt').forEach((b) => b.setAttribute('aria-checked', String(b === el))); break;
       case 'coach-copy': copyCoachPrompt(); break;
       case 'import-sheet': sheetImport(); break;
@@ -1733,9 +2007,15 @@
       }
       case 'theme': settings.theme = el.dataset.themePick; saveSettings(); applyTheme(); render(); break;
       case 'lang': settings.lang = el.dataset.langPick; saveSettings(); applyLang(); ui.viewAnim = true; render(); break;
-      case 'block-weeks': settings.blockWeeks = +el.dataset.weeks; saveSettings(); render(); break;
-      case 'deload-start': settings.deload = { start: Date.now(), end: startOfDay(Date.now()) + 7 * DAY }; saveSettings(); render(); break;
-      case 'deload-end': settings.deload = null; settings.blockStart = Date.now(); saveSettings(); render(); break;
+      case 'block-weeks': settings.blockWeeks = +el.dataset.weeks; saveShared(); render(); break;
+      case 'deload-start': settings.deload = { start: Date.now(), end: startOfDay(Date.now()) + 7 * DAY }; saveShared(); render(); break;
+      case 'deload-end': settings.deload = null; settings.blockStart = Date.now(); saveShared(); render(); break;
+      case 'progress-sheet': sheetProgress(); break;
+      case 'sync-save': saveSyncSettings(); break;
+      case 'sync-make': makeSyncCode(); break;
+      case 'sync-now': runSync(true); break;
+      case 'sync-link': copySyncLink(); break;
+      case 'sync-off': settings.sync = null; saveSettings(); render(); toast(t('syncOff')); break;
       case 'prefetch': {
         if (!navigator.onLine) { toast(t('offline')); break; }
         el.disabled = true; el.textContent = t('downloading');
@@ -1746,7 +2026,7 @@
       case 'backup': backup(true); break;
       case 'backup-dl': backup(false); break;
       case 'reset-program': if (confirm(t('resetQ'))) { program = clone(window.DEFAULT_PROGRAM); saveProgram(); ui.override = null; render(); toast(t('resetDone')); } break;
-      case 'clear-history': if (confirm(t('clearQ'))) { log = { sessions: [] }; saveLog(); render(); toast(t('cleared')); } break;
+      case 'clear-history': if (confirm(t('clearQ'))) { log = { sessions: [], deleted: [...(log.deleted || []), ...log.sessions.map((w) => w.id)] }; saveLog(); render(); toast(t('cleared')); } break;
       case 'close-cele': closeCele(); break;
       default: break;
     }
@@ -1815,10 +2095,12 @@
   buildNav();
   render();
   if (current) wakeOn();
+  readSyncLink();
+  if (syncReady()) setTimeout(() => runSync(false), 400);
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) toast(t('appUpdated')); });
     navigator.serviceWorker.register('sw.js').then(() => { if (navigator.onLine) prefetchPhotos(); }).catch(() => {});
   }
-  window.__app = { get program() { return program; }, get log() { return log; }, get settings() { return settings; }, render, coachPrompt: (p, n) => coachPrompt(p || 'review', n || '') };
+  window.__app = { get program() { return program; }, get log() { return log; }, get settings() { return settings; }, render, runSync: () => runSync(true), mergePayload, exStatuses: () => Object.fromEntries(exStatuses()), coachPrompt: (p, n) => coachPrompt(p || 'review', n || '') };
 })();
