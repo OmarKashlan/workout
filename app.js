@@ -937,7 +937,8 @@
               <span class="chev">${ICON.chev}</span>
             </button>
             ${open ? `<div class="hist-detail">${w.entries.map((e) => `<div class="hx"><b>${esc(entryName(e))}</b><br>${setsHTML(e.sets, e.noWeight)}</div>`).join('')}
-              <button class="btn sm soft danger" data-act="hist-del" data-id="${esc(w.id)}">${t('deleteWorkout')}</button></div>` : ''}
+              <div class="row wrap"><button class="btn sm soft" data-act="date-sheet" data-id="${esc(w.id)}">${ICON.clock}${t('changeDate')}</button>
+              <button class="btn sm soft danger" data-act="hist-del" data-id="${esc(w.id)}">${t('deleteWorkout')}</button></div></div>` : ''}
           </div>
         </div>`;
       }).join('');
@@ -1137,6 +1138,47 @@
     if (reduceMotion()) { root.innerHTML = ''; return; }
     root.classList.add('closing');
     sheetCloseTimer = setTimeout(() => { root.innerHTML = ''; root.classList.remove('closing'); }, 220);
+  }
+
+  // Change when a logged workout happened (for example, logged today but done yesterday).
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const dateValue = (x) => { const d = new Date(x); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+  const timeValue = (x) => { const d = new Date(x); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+  function sheetDate(id) {
+    const w = log.sessions.find((x) => x.id === id);
+    if (!w) return;
+    const quick = [[0, t('todayLbl')], [1, t('yesterdayLbl')], [2, t('twoDaysLbl')]].map(([d, l]) => {
+      const x = new Date(); x.setDate(x.getDate() - d);
+      return `<button type="button" class="chip" data-act="date-quick" data-date="${dateValue(x)}" aria-pressed="${dateValue(x) === dateValue(w.start)}">${l}</button>`;
+    }).join('');
+    openSheet(`<h3>${ICON.clock}${t('changeDate')}</h3>
+      <p class="small muted">${esc(workoutName(w))}, ${esc(fmtDate(w.start))}</p>
+      <div class="chips" style="margin-bottom:14px">${quick}</div>
+      <div class="grid2">
+        <label class="field"><span>${t('dateF')}</span><input type="date" id="wd-date" dir="ltr" max="${dateValue(Date.now())}" value="${dateValue(w.start)}"></label>
+        <label class="field"><span>${t('timeF')}</span><input type="time" id="wd-time" dir="ltr" value="${timeValue(w.start)}"></label>
+      </div>
+      <button class="btn primary big" data-act="date-save" data-id="${esc(id)}">${t('saveDate')}</button>
+      <button class="btn ghost wide" data-act="close-sheet">${t('cancel')}</button>`);
+  }
+  function saveWorkoutDate(id) {
+    const w = log.sessions.find((x) => x.id === id);
+    const d = ($('#wd-date') || {}).value, tm = ($('#wd-time') || {}).value || '12:00';
+    if (!w || !d) return;
+    const [y, mo, da] = d.split('-').map(Number);
+    const [h, mi] = tm.split(':').map(Number);
+    const start = new Date(y, mo - 1, da, h, mi).getTime();
+    if (!isFinite(start)) return;
+    if (start > Date.now()) { toast(t('dateFuture')); return; }
+    const shift = start - w.start;
+    w.start += shift;
+    w.end = (w.end || w.start) + shift;
+    w.editedAt = Date.now();
+    log.sessions.sort((a, b) => a.start - b.start);
+    saveLog();
+    closeSheet();
+    render();
+    toast(t('dateSaved'));
   }
 
   function sheetPick() {
@@ -1720,7 +1762,7 @@
     const deleted = new Set([...(a.log.deleted || []), ...(b.log.deleted || [])]);
     const byId = new Map();
     (b.log.sessions || []).forEach((w) => byId.set(w.id, w));
-    a.log.sessions.forEach((w) => byId.set(w.id, w));
+    a.log.sessions.forEach((w) => { const o = byId.get(w.id); if (!o || (w.editedAt || 0) >= (o.editedAt || 0)) byId.set(w.id, w); });
     const sessionsOut = [...byId.values()].filter((w) => !deleted.has(w.id)).sort((x, y) => x.start - y.start);
     const days = new Map();
     [...(b.body || []), ...(a.body || [])].sort((x, y) => x.t - y.t).forEach((x) => days.set(startOfDay(x.t), x));
@@ -1979,6 +2021,9 @@
       case 'discard': discardWorkout(); break;
       case 'hist-mode': ui.histMode = el.dataset.mode; ui.histOpen = null; ui.intro = true; render(); break;
       case 'hist-open': ui.histOpen = ui.histOpen === el.dataset.id ? null : el.dataset.id; render(); break;
+      case 'date-sheet': sheetDate(el.dataset.id); break;
+      case 'date-quick': { const inp = $('#wd-date'); if (inp) inp.value = el.dataset.date; el.parentElement.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b === el))); break; }
+      case 'date-save': saveWorkoutDate(el.dataset.id); break;
       case 'hist-del': if (confirm(t('deleteWorkoutQ'))) { log.deleted = [...(log.deleted || []), el.dataset.id]; log.sessions = log.sessions.filter((w) => w.id !== el.dataset.id); saveLog(); ui.histOpen = null; render(); } break;
       case 'close-sheet': if (e.target === el || el.tagName === 'BUTTON') closeSheet(); break;
       case 'coach-sheet': if (el.dataset.preset) ui.coach = el.dataset.preset; sheetCoach(); break;

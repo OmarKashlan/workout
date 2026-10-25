@@ -71,6 +71,8 @@
       workoutsTab: 'Workouts', exercisesTab: 'Exercises', histEmpty: 'No workouts logged yet. Finish your first session and it shows up here.',
       histMeta: (d, m, s, v) => `${d}, ${m} min, ${en(s, 'set')}${v ? `, ${v} kg` : ''}`,
       deleteWorkout: 'Delete this workout', deleteWorkoutQ: 'Delete this workout from your history?',
+      changeDate: 'Change date', dateF: 'Date', timeF: 'Start time', saveDate: 'Save date', yesterdayLbl: 'Yesterday', twoDaysLbl: '2 days ago',
+      dateFuture: 'That date is in the future.', dateSaved: 'Date changed.',
       lineTop: 'The line shows your heaviest set per workout.', lineReps: 'The line shows total reps per workout.', trendAria: (a, b) => `Trend from ${a} to ${b}`,
       // program
       programDesc: (n) => `${n}. Sessions run in this order, then repeat.`,
@@ -213,6 +215,8 @@
       workoutsTab: 'الحصص', exercisesTab: 'التمارين', histEmpty: 'لا توجد حصص مسجّلة بعد. أنهِ أول حصة وستظهر هنا.',
       histMeta: (d, m, s, v) => `${d}، ${m} د، ${A.sets(s)}${v ? `، ${v} كغ` : ''}`,
       deleteWorkout: 'احذف هذه الحصة', deleteWorkoutQ: 'حذف هذه الحصة من سجلك؟',
+      changeDate: 'تغيير التاريخ', dateF: 'التاريخ', timeF: 'وقت البدء', saveDate: 'حفظ التاريخ', yesterdayLbl: 'أمس', twoDaysLbl: 'قبل يومين',
+      dateFuture: 'هذا التاريخ في المستقبل.', dateSaved: 'تم تغيير التاريخ.',
       lineTop: 'الخط يُظهر أثقل مجموعة في كل حصة.', lineReps: 'الخط يُظهر مجموع التكرارات في كل حصة.', trendAria: (a, b) => `التغيّر من ${a} إلى ${b}`,
       programDesc: (n) => `${n}. الحصص تُنفَّذ بهذا الترتيب ثم تتكرر.`,
       coachT: 'المدرّب الذكي',

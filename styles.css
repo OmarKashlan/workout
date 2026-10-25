@@ -791,3 +791,6 @@ details.howto li { margin-bottom: 6px; }
 .sync-box .field { flex: 1 1 100%; margin: 4px 0 0; }
 .sync-box .row { flex: 1 1 100%; }
 .sync-status { flex: 1 1 100%; margin: 2px 0 0; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hist-detail .row { margin-top: 10px; }
