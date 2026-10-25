@@ -151,7 +151,14 @@ Keep the big lifts for months. Swapping small exercises after a block or two is 
 
 ### Program
 - **AI coach** panel (see below).
-- Edit, reorder, add or delete exercises and sessions. Add exercises from a built-in library of **873 exercises** that works offline, or start blank.
+- Edit, reorder, add or delete exercises and sessions.
+- **Add exercise** opens a built-in library of **873 exercises** that works offline. You don't need to know names:
+  - filter by **muscle** (chest, shoulders, lats, quads, hamstrings, glutes, calves, abs, …) and **equipment** (machine, cable, dumbbell, barbell, bodyweight, other);
+  - each exercise shows its muscles, equipment, compound or isolation, and difficulty;
+  - tap the photo to preview the movement full screen, tap the name to add it;
+  - **Show more** pages through the list, 30 at a time; gym equipment comes first;
+  - stretches, cardio, jumps and Olympic lifts are hidden unless you tick the box;
+  - or search by name, or start from a blank exercise.
 - For each exercise: name (and Arabic name), target sets, reps, rest, cue, steps, main and secondary muscles, superset, bodyweight-only, and the photo (library photo, your own photo, or none).
 - Sessions have a name, focus and plate colour.
 

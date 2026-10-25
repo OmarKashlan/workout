@@ -1252,6 +1252,7 @@
           <button type="submit" class="btn primary grow">${t('saveEx')}</button>
           ${draft.isNew ? '' : `<button type="button" class="btn danger" data-act="delete-ex">${t('del')}</button>`}
         </div>
+        ${draft.fromLib ? `<button type="button" class="btn ghost wide" data-act="back-to-lib">${t('backToList')}</button>` : ''}
         <button type="button" class="btn ghost wide" data-act="close-sheet">${t('cancel')}</button>
       </form>`, draft);
   }
@@ -1296,23 +1297,79 @@
     if (navigator.onLine) prefetchPhotos();
   }
 
+  // ---------- Exercise library: browse by muscle and equipment, with paging ----------
+  const LIB_PAGE = 30;
+  const LIB_MUSCLES = ['chest', 'shoulders', 'lats', 'middle back', 'traps', 'lower back', 'biceps', 'triceps', 'forearms', 'abdominals', 'quadriceps', 'hamstrings', 'glutes', 'calves', 'adductors', 'abductors', 'neck'];
+  const LIB_TO_KEY = { chest: 'chest', lats: 'lats', traps: 'traps', 'lower back': 'lower-back', biceps: 'biceps', triceps: 'triceps', forearms: 'forearms', abdominals: 'abs', quadriceps: 'quads', hamstrings: 'hamstrings', glutes: 'glutes', calves: 'calves', adductors: 'adductors' };
+  const libMuscleName = (m) => (LIB_TO_KEY[m] ? muscleName(LIB_TO_KEY[m]) : (t('libM')[m] || m));
+  const EQ_KEYS = ['machine', 'cable', 'dumbbell', 'barbell', 'body', 'other'];
+  const eqGroup = (e) => (e.eq === 'machine' ? 'machine' : e.eq === 'cable' ? 'cable' : e.eq === 'dumbbell' ? 'dumbbell'
+    : e.eq === 'barbell' || e.eq === 'e-z curl bar' ? 'barbell' : e.eq === 'body only' ? 'body' : 'other');
+  ui.lib = { q: '', muscle: 'all', eq: 'all', all: false, shown: LIB_PAGE };
+
   function sheetLibrary(mode, sessionId) {
     sheetState = Object.assign(sheetState || {}, { libMode: mode, libSession: sessionId });
     const keep = sheetState;
+    const f = ui.lib;
+    f.shown = LIB_PAGE;
+    const chipRow = (act, items, cur) => `<div class="chip-scroll" role="group">${items.map(([v, l]) => `<button type="button" class="chip" data-act="${act}" data-v="${esc(v)}" aria-pressed="${v === cur}">${esc(l)}</button>`).join('')}</div>`;
     openSheet(`<h3>${mode === 'photo' ? t('chooseAPhoto') : t('addAnExercise')}</h3>
-      <label class="field"><span>${esc(t('searchN', LIBRARY.length))}</span><input type="search" id="lib-q" dir="ltr" placeholder="${esc(t('searchPh'))}" autofocus></label>
-      ${mode === 'add' ? `<button class="btn sm soft" data-act="blank-ex">${t('blankEx')}</button>` : ''}
-      <ul class="results" id="lib-results"></ul>
+      <label class="field"><span>${esc(t('searchN', LIBRARY.length))}</span><input type="search" id="lib-q" dir="ltr" placeholder="${esc(t('searchPh'))}" value="${esc(f.q)}"></label>
+      <p class="filter-label">${t('libMuscle')}</p>
+      ${chipRow('lib-muscle', [['all', t('allF')], ...LIB_MUSCLES.map((m) => [m, libMuscleName(m)])], f.muscle)}
+      <p class="filter-label">${t('libEquip')}</p>
+      ${chipRow('lib-eq', [['all', t('allF')], ...EQ_KEYS.map((k) => [k, t('eqL')[k]])], f.eq)}
+      <label class="check-row small"><input type="checkbox" id="lib-all" ${f.all ? 'checked' : ''}> ${t('libStretch')}</label>
+      <div class="lib-bar"><p class="small muted" id="lib-count"></p>${mode === 'add' ? `<button class="btn sm soft" data-act="blank-ex">${ICON.plus}${t('blankEx')}</button>` : ''}</div>
+      <ul class="results lib-results" id="lib-results"></ul>
+      <div id="lib-more"></div>
       <button class="btn ghost wide" data-act="${mode === 'photo' ? 'back-to-edit' : 'close-sheet'}">${mode === 'photo' ? t('backBtn') : t('cancel')}</button>`, keep);
-    renderLibResults('');
+    renderLibResults();
   }
-  function renderLibResults(q) {
-    const words = norm(q) ? q.toLowerCase().split(/\s+/).map(norm).filter(Boolean) : [];
-    const res = (words.length ? LIBRARY.filter((e) => { const n = norm(e.n); return words.every((w) => n.includes(w)); }) : LIBRARY.filter((e) => BUNDLED.has(e.id))).slice(0, 40);
-    $('#lib-results').innerHTML = res.length ? res.map((e) => {
-      const thumb = BUNDLED.has(e.id) ? `<img class="thumb" src="img/${e.id}/0.jpg" alt="" loading="lazy">` : `<img class="thumb" src="${LIB_BASE}${e.id}/0.jpg?thumb" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`;
-      return `<li><button data-act="lib-choose" data-lib="${esc(e.id)}">${thumb}<span dir="ltr"><span class="rn">${esc(e.n)}</span><br><span class="r-meta">${esc([e.eq, (e.p || []).join(', ')].filter(Boolean).join(', '))}</span></span></button></li>`;
-    }).join('') : `<li class="muted" style="padding:12px 0">${t('noMatches')}</li>`;
+  // Normal gym lifts by default; jumps, Olympic lifts, strongman, stretches and cardio only when asked.
+  const GYM_TYPES = new Set(['strength', 'powerlifting']);
+  // Gym equipment first, then bodyweight, then the rest; advanced moves last in each group; then A to Z.
+  const libRank = (e) => ({ machine: 0, cable: 0, dumbbell: 0, barbell: 0, body: 1, other: 2 }[eqGroup(e)] * 2 + (e.lv === 'e' ? 1 : 0));
+  const LIB_SORTED = [...LIBRARY].sort((a, b) => libRank(a) - libRank(b) || a.n.localeCompare(b.n));
+  function libFiltered() {
+    const f = ui.lib;
+    const words = norm(f.q) ? f.q.toLowerCase().split(/\s+/).map(norm).filter(Boolean) : [];
+    return LIB_SORTED.filter((e) => (f.all || GYM_TYPES.has(e.c))
+      && (f.muscle === 'all' || (e.p || []).includes(f.muscle))
+      && (f.eq === 'all' || eqGroup(e) === f.eq)
+      && (!words.length || words.every((w) => norm(e.n).includes(w))));
+  }
+  function libRow(e) {
+    const urls = photoUrls(e.id);
+    const thumbSrc = BUNDLED.has(e.id) ? urls[0] : `${urls[0]}?thumb`;
+    const meta = [
+      ...(e.p || []).map(libMuscleName),
+      e.eq ? (eqGroup(e) === 'other' ? (t('eqRaw')[e.eq] || t('eqL').other) : t('eqL')[eqGroup(e)]) : '',
+      e.m ? t('mechL')[e.m] : '',
+      e.lv ? t('levelL')[e.lv] : ''
+    ].filter(Boolean).join(comma());
+    return `<li class="lib-row">
+      <button class="lib-thumb" data-act="zoom" data-srcs="${esc(urls.join('|'))}" data-title="${esc(e.n)}" aria-label="${esc(t('previewX', e.n))}"><img class="thumb" src="${thumbSrc}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="zoom-ic">${ICON.expand}</span></button>
+      <button class="lib-pick" data-act="lib-choose" data-lib="${esc(e.id)}"><span class="rn" dir="ltr">${esc(e.n)}</span><span class="r-meta">${esc(meta)}</span></button>
+    </li>`;
+  }
+  function renderLibResults() {
+    const list = libFiltered();
+    const shown = list.slice(0, ui.lib.shown);
+    const count = $('#lib-count');
+    if (!count) return;
+    count.textContent = t('libCount', list.length);
+    $('#lib-results').innerHTML = shown.length ? shown.map(libRow).join('') : `<li class="muted" style="padding:12px 0">${t('noMatches')}</li>`;
+    const left = list.length - shown.length;
+    $('#lib-more').innerHTML = left > 0 ? `<button class="btn soft wide" data-act="lib-more">${esc(t('showMore', Math.min(LIB_PAGE, left), left))}</button>` : '';
+  }
+  function setLibFilter(key, value, el) {
+    ui.lib[key] = value;
+    ui.lib.shown = LIB_PAGE;
+    if (el) el.parentElement.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b === el)));
+    renderLibResults();
+    const list = $('#lib-results');
+    if (list) list.scrollIntoView({ block: 'nearest' });
   }
 
   function sheetSession(sessionId) {
@@ -2036,12 +2093,16 @@
       case 'blank-ex': sheetEditExercise(newExerciseDraft(sheetState.libSession, null)); break;
       case 'lib-choose': {
         if (sheetState && sheetState.libMode === 'photo' && sheetState.ex) { sheetState.ex.library = el.dataset.lib; delete sheetState.ex.photo; sheetState.libMode = null; sheetEditExercise(sheetState); }
-        else sheetEditExercise(newExerciseDraft(sheetState.libSession, el.dataset.lib));
+        else { const d = newExerciseDraft(sheetState.libSession, el.dataset.lib); d.fromLib = true; sheetEditExercise(d); }
         break;
       }
       case 'edit-ex': { const s = sessionById(sid); const ex = s.exercises.find((x) => x.id === exId); sheetEditExercise({ sessionId: sid, isNew: false, origId: exId, ex: clone(ex) }); break; }
       case 'move-ex': { const s = sessionById(sid); const i = s.exercises.findIndex((x) => x.id === exId); const j = i + +el.dataset.dir; if (j < 0 || j >= s.exercises.length) break; [s.exercises[i], s.exercises[j]] = [s.exercises[j], s.exercises[i]]; saveProgram(); render(); break; }
       case 'chip': el.setAttribute('aria-pressed', el.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'); break;
+      case 'lib-muscle': setLibFilter('muscle', el.dataset.v, el); break;
+      case 'lib-eq': setLibFilter('eq', el.dataset.v, el); break;
+      case 'lib-more': ui.lib.shown += LIB_PAGE; renderLibResults(); break;
+      case 'back-to-lib': sheetState = { sessionId: sheetState.sessionId }; sheetLibrary('add', sheetState.sessionId); break;
       case 'lib-photo': readExerciseForm(); sheetLibrary('photo', sheetState.sessionId); break;
       case 'back-to-edit': sheetState.libMode = null; sheetEditExercise(sheetState); break;
       case 'no-photo': readExerciseForm(); sheetState.ex.library = null; delete sheetState.ex.photo; sheetEditExercise(sheetState); break;
@@ -2105,10 +2166,11 @@
       const st = current.ex[el.dataset.ex];
       if (st) { st.sets[+el.dataset.i][el.dataset.f] = el.value; saveCurrent(); }
     }
-    if (el.id === 'lib-q') renderLibResults(el.value);
+    if (el.id === 'lib-q') { ui.lib.q = el.value; ui.lib.shown = LIB_PAGE; renderLibResults(); }
   });
   document.addEventListener('change', async (e) => {
     const el = e.target;
+    if (el.id === 'lib-all') { setLibFilter('all', el.checked); return; }
     if (el.dataset.act === 'restore' && el.files[0]) { await restore(el.files[0]); el.value = ''; }
     if (el.dataset.act === 'own-photo' && el.files[0]) {
       readExerciseForm();
