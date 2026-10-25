@@ -5,7 +5,7 @@ What this is
 ------------
 A small web app that installs on your Android phone like a normal app and
 works with no internet. Your program, logged sets and photos stay on your
-phone. Nothing is sent anywhere.
+phone. Works in English and Arabic (Settings > Language).
 
 It needs to be put online once (free) so your phone can install it.
 
@@ -13,81 +13,77 @@ It needs to be put online once (free) so your phone can install it.
 Step 1: Put it online for free (GitHub Pages, on a computer)
 ------------------------------------------------------------
 1. Unzip this file. You get a folder called gym-app.
-2. Make a free account at github.com, if you don't have one.
-3. Click "+" (top right) > "New repository".
-   Name it: workout. Leave it Public. Click "Create repository".
-4. On the next page click "uploading an existing file".
-5. Open the gym-app folder, select everything inside it
-   (index.html, app.js, the img folder and the rest) and drag it
-   onto the page. Wait for the upload to finish, then click
-   "Commit changes".
-6. Go to Settings > Pages. Under "Branch" choose "main" and "/ (root)",
-   then Save.
-7. After a minute or two the page shows your link, like:
+2. On github.com click "+" > "New repository". Name it: workout.
+   Leave README off. Click "Create repository".
+3. Click "uploading an existing file".
+4. Open the gym-app folder, select everything inside it (index.html,
+   app.js, the img folder and the rest) and drag it onto the page.
+   Click "Commit changes".
+5. Go to Settings > Pages. Under "Branch" choose "main" and "/ (root)",
+   then Save. After a minute or two your link appears, like:
    https://YOUR-NAME.github.io/workout/
 
-(Another free option: Netlify Drop at app.netlify.com/drop. Sign up or
-log in first, then drag the gym-app folder onto the page.)
+Updating: upload the new files to the same repository and replace the old
+ones. The app updates the next time you open it online. Your data stays.
 
 
 Step 2: Install on Android
 --------------------------
 1. Open your link in Chrome on your phone, with internet on.
 2. Wait about 10 seconds so everything downloads.
-3. Tap the three dots menu > "Install app" (on some phones it says
-   "Add to Home screen").
-4. Open it from your home screen once more while online. After that it
-   works in the gym with no internet.
+3. Tap the three dots menu > "Install app" (or "Add to Home screen").
+4. Open it once more while online. After that it works with no internet.
 
 
 Using it
 --------
-Today     Shows your next session in the rotation. Tap a plate on the
-          bar, or "Do a different session", to pick another one.
-Workout   Tap an exercise to open it. Type kg and reps, then tap the
-          tick. Grey numbers are what you did last time; tap the tick
-          without typing to reuse them. The rest timer starts by itself.
-          For bodyweight work only reps are logged. For assisted
-          pull-ups, log the assistance as a negative weight (e.g. -20).
+Today     Your next session in the rotation. Tap a plate on the bar, or
+          "Do a different session", to pick another one.
+Workout   Every exercise starts with 2 sets. Type kg and reps, tap the
+          tick. After 2 sets the app asks if you want set 3 (up to the
+          target), or tap "Done with this exercise". Tapped Done by
+          mistake? Open the exercise and tap "Undo done".
+          Grey numbers are last time's; tap the tick without typing to
+          reuse them. The rest timer starts by itself.
+          Tap a photo to see it full screen, with Start and End buttons.
 History   Every workout, and each exercise's progress over time.
 Program   Add, edit, reorder or delete exercises and sessions.
-Settings  Dark or light theme, keep screen on, ease-in weeks, backup
-          and restore.
+Settings  Language, theme, your profile, easy weeks, backup and restore.
 
 
-Adding exercises with AI
-------------------------
-1. Program > "Copy prompt for AI".
-2. Paste it into Claude (or any AI) and add what you want, for example:
-   "Add face pulls to Upper B" or "Swap leg extensions for sissy squats".
-3. Copy the AI's whole answer, go to Program > Import, paste, tap
-   "Check the import", then confirm.
+The AI coach
+------------
+You don't need to know what to ask.
+1. Program > "Ask the AI coach". Pick what you want help with, for
+   example "Check my progress and improve my program". Add a note if
+   you like, then tap "Copy prompt".
+2. Paste it into Claude or ChatGPT. The prompt already contains your
+   profile (weight, height, back issue, goals), your whole program and
+   all your logged sets.
+3. Copy the coach's whole reply, go to Program > "Import reply", paste,
+   tap "Check the import", then confirm.
 Exercises that keep the same name keep their history.
 
-Or add one by hand: Program > "Add exercise" and search the built-in
-library of 873 exercises (works offline).
-
-Photos for exercises you add download the next time you open the app
-with internet. Settings > "Photos for offline use" shows how many are
-saved and has a "Download now" button. You can also use your own photo.
+Keep your profile up to date in Settings > Your profile. When your body
+weight changes, update it there; the coach sees the trend.
 
 
-Back up now and then
---------------------
-Your data lives only on this phone. Settings > "Back up" saves a file to
-your Downloads. If you change phones or clear Chrome's data, install the
-app again and use "Restore".
+Blocks and easy weeks
+---------------------
+Keep repeating Upper A > Lower A > Upper B > Lower B. After 8 weeks
+(you can pick 6 to 12 in Settings) the app suggests an easy week:
+2 sets per exercise and lighter weights. Then a new block starts.
 
 
-Updating the app later
-----------------------
-If you get a new version of these files, upload them to the same GitHub
-repository (replace the old ones). The app updates itself the next time
-you open it online, and your data stays.
+Back up to Google Drive
+-----------------------
+Settings > "Back up" opens Android's share menu. Pick Drive to save the
+file there. Do it every week or two. To restore on a new phone, install
+the app, download the file from Drive and use Settings > Restore.
 
 
 Credits
 -------
 Exercise photos and the exercise library: Free Exercise DB
 (github.com/yuhonas/free-exercise-db), released into the public domain.
-Font: Barlow Condensed, SIL Open Font License.
+Fonts: Barlow Condensed and Cairo, SIL Open Font License.
