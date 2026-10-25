@@ -1767,7 +1767,7 @@
     } catch (e) { throw new Error(t('errNoServer')); }
     if (res.status === 401 || res.status === 403) throw new Error(t('errWrongCode'));
     const data = await res.json().catch(() => null);
-    if (!res.ok && res.status !== 409) throw new Error(t('errServer', res.status));
+    if (!res.ok && res.status !== 409) throw new Error(data && data.error ? data.error : t('errServer', res.status));
     return { status: res.status, data };
   }
   function syncStatusText() {
@@ -1815,18 +1815,20 @@
   }
   document.addEventListener('focusout', () => { if (pendingRender) setTimeout(() => { const a = document.activeElement; if (pendingRender && !(a && a.matches('input, textarea, select'))) { pendingRender = false; render(); } }, 200); });
   window.addEventListener('online', () => scheduleSync(800));
-  function makeSyncCode() {
+  function newCode() {
     const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const code = [...bytes].map((b) => abc[b % abc.length]).join('');
+    return [...crypto.getRandomValues(new Uint8Array(32))].map((b) => abc[b % abc.length]).join('');
+  }
+  function makeSyncCode() {
+    const code = newCode();
     const inp = $('#sync-code');
     if (inp) inp.value = code;
     navigator.clipboard.writeText(code).then(() => toast(t('codeCopied')), () => {});
   }
   function saveSyncSettings() {
     const url = normUrl(($('#sync-url') || {}).value);
-    const code = String(($('#sync-code') || {}).value || '').trim();
-    const problem = urlProblem(url) || (code ? '' : t('needUrlCode'));
+    const code = String(($('#sync-code') || {}).value || '').trim() || newCode();
+    const problem = urlProblem(url);
     if (problem) { toast(problem); return; }
     settings.sync = { url, code, lastSync: null, lastError: null };
     saveSettings();
@@ -1859,7 +1861,7 @@
     return `<div class="opt-row stack sync-box"><div class="grow"><b>${ICON.sync}${t('syncT')}</b><span class="small muted">${t('syncHelp')}</span></div>
       <label class="field"><span>${t('syncUrl')}</span><input id="sync-url" type="url" dir="ltr" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://workout-sync.yourname.workers.dev" value="${esc(c.url || '')}"></label>
       <label class="field"><span>${t('syncCode')}</span><input id="sync-code" dir="ltr" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(c.code || '')}"><span class="help">${t('syncCodeHelp')}</span></label>
-      <div class="row wrap"><button class="btn sm primary" data-act="sync-save">${t('saveSync')}</button><button class="btn sm soft" data-act="sync-make">${t('makeCode')}</button></div>
+      <div class="row wrap"><button class="btn sm primary" data-act="sync-save">${t('saveSync')}</button>${syncReady() ? '' : `<button class="btn sm ghost" data-act="sync-make">${t('makeCode')}</button>`}</div>
       ${syncReady() ? `<div class="row wrap"><button class="btn sm soft" data-act="sync-now">${ICON.sync}${t('syncNow')}</button><button class="btn sm soft" data-act="sync-link">${t('copyLink')}</button><button class="btn sm ghost danger" data-act="sync-off">${t('turnOff')}</button></div>` : ''}
       <p class="small muted sync-status" id="sync-status">${esc(syncStatusText())}</p>
     </div>`;
