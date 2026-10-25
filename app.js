@@ -1825,11 +1825,24 @@
     if (inp) inp.value = code;
     navigator.clipboard.writeText(code).then(() => toast(t('codeCopied')), () => {});
   }
-  function saveSyncSettings() {
-    const url = normUrl(($('#sync-url') || {}).value);
-    const code = String(($('#sync-code') || {}).value || '').trim() || newCode();
+  async function saveSyncSettings() {
+    let raw = String(($('#sync-url') || {}).value || '').trim();
+    let code = String(($('#sync-code') || {}).value || '').trim();
+    // A whole "link for another device" pasted into the address box works too.
+    const linkPart = raw.match(/#sync=([^&]+)&code=([^&\s]+)/);
+    if (linkPart) { raw = decodeURIComponent(linkPart[1]); code = decodeURIComponent(linkPart[2]); }
+    const url = normUrl(raw);
     const problem = urlProblem(url);
     if (problem) { toast(problem); return; }
+    if (!code) {
+      // Only make a new code for a server nobody has claimed yet.
+      try {
+        const r = await fetch(`${url}/v1/ping`, { cache: 'no-store' });
+        const info = await r.json();
+        if (info && info.claimed) { toast(t('serverClaimed')); return; }
+      } catch (e) { toast(t('syncErr', t('errNoServer'))); return; }
+      code = newCode();
+    }
     settings.sync = { url, code, lastSync: null, lastError: null };
     saveSettings();
     render();
@@ -1853,15 +1866,16 @@
     if (url && code && !urlProblem(url) && confirm(t('connectQ'))) {
       settings.sync = { url, code, lastSync: null, lastError: null };
       saveSettings();
+      if (ui.tab === 'settings') render();
       runSync(true);
     }
   }
   function syncBox() {
-    const c = settings.sync || {};
+    const c = settings.sync || settings.syncLast || {};
     return `<div class="opt-row stack sync-box"><div class="grow"><b>${ICON.sync}${t('syncT')}</b><span class="small muted">${t('syncHelp')}</span></div>
       <label class="field"><span>${t('syncUrl')}</span><input id="sync-url" type="url" dir="ltr" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://workout-sync.yourname.workers.dev" value="${esc(c.url || '')}"></label>
       <label class="field"><span>${t('syncCode')}</span><input id="sync-code" dir="ltr" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(c.code || '')}"><span class="help">${t('syncCodeHelp')}</span></label>
-      <div class="row wrap"><button class="btn sm primary" data-act="sync-save">${t('saveSync')}</button>${syncReady() ? '' : `<button class="btn sm ghost" data-act="sync-make">${t('makeCode')}</button>`}</div>
+      <div class="row wrap"><button class="btn sm primary" data-act="sync-save">${t('saveSync')}</button>${syncReady() || c.code ? '' : `<button class="btn sm ghost" data-act="sync-make">${t('makeCode')}</button>`}</div>
       ${syncReady() ? `<div class="row wrap"><button class="btn sm soft" data-act="sync-now">${ICON.sync}${t('syncNow')}</button><button class="btn sm soft" data-act="sync-link">${t('copyLink')}</button><button class="btn sm ghost danger" data-act="sync-off">${t('turnOff')}</button></div>` : ''}
       <p class="small muted sync-status" id="sync-status">${esc(syncStatusText())}</p>
     </div>`;
@@ -2017,7 +2031,7 @@
       case 'sync-make': makeSyncCode(); break;
       case 'sync-now': runSync(true); break;
       case 'sync-link': copySyncLink(); break;
-      case 'sync-off': settings.sync = null; saveSettings(); render(); toast(t('syncOff')); break;
+      case 'sync-off': if (confirm(t('offQ'))) { settings.syncLast = { url: settings.sync.url, code: settings.sync.code }; settings.sync = null; saveSettings(); render(); toast(t('syncOff')); } break;
       case 'prefetch': {
         if (!navigator.onLine) { toast(t('offline')); break; }
         el.disabled = true; el.textContent = t('downloading');
