@@ -23,6 +23,9 @@
   const LIB_BY_ID = new Map(LIBRARY.map((e) => [e.id, e]));
   const LIB_BY_NORM = new Map();
   LIBRARY.forEach((e) => { LIB_BY_NORM.set(norm(e.n), e.id); LIB_BY_NORM.set(norm(e.id), e.id); });
+  const LIB_AR = window.LIBRARY_AR || {};
+  // Arabic search ignores short vowels and the different ways of writing alef, taa marbuta and yaa.
+  const normAr = (s) => String(s || '').replace(/[\u064B-\u065F\u0670\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/كابل/g, 'كيبل').replace(/دامبل/g, 'دمبل').toLowerCase();
   const DEFAULT_PROFILE = {
     weight: 68, height: 179, age: '',
     goal: 'Build muscle (hypertrophy)',
@@ -144,9 +147,28 @@
     return typeof v === 'function' ? v(...a) : v;
   }
   const muscleName = (m) => (window.MUSCLE_NAMES[settings.lang] || window.MUSCLE_NAMES.en)[m] || m;
-  const exName = (ex) => (L() && ex.ar && ex.ar.name) || ex.name;
+  // Exercises with the same English name as a library exercise get its Arabic name.
+  const arByName = (name) => { const id = LIB_BY_NORM.get(norm(name)); return id && LIB_AR[id] ? LIB_AR[id][0] : ''; };
+  const libNameL = (e) => (L() && LIB_AR[e.id] ? LIB_AR[e.id][0] : e.n);
+  const libArSteps = (ex) => {
+    const e = ex.library && LIB_BY_ID.get(ex.library);
+    const ar = e && LIB_AR[e.id] && LIB_AR[e.id][1];
+    // Only when the steps are still the library's own, so your own edits are never replaced.
+    return ar && (ex.steps || []).join('\n') === e.st.join('\n') ? ar : null;
+  };
+  const exName = (ex) => (L() && ((ex.ar && ex.ar.name) || arByName(ex.name))) || ex.name;
   const exCue = (ex) => (L() && ex.ar && ex.ar.cue) || ex.cue || '';
-  const exSteps = (ex) => (L() && ex.ar && ex.ar.steps && ex.ar.steps.length ? ex.ar.steps : ex.steps) || [];
+  // "10–12 / leg" reads "10–12 / رجل" in Arabic. The saved text stays English for the AI coach.
+  const REPS_AR = { leg: 'رجل', arm: 'ذراع', side: 'جهة', each: 'لكل جهة' };
+  const repsL = (r) => {
+    const s = String(r || '');
+    if (!L() || !/[a-z]/i.test(s)) return s;
+    // Keep the number range left to right inside the Arabic text.
+    return s.replace(/\b(leg|arm|side|each)s?\b/gi, (m) => REPS_AR[m.toLowerCase().replace(/s$/, '')] || m).replace(/^([\d–\-\s]+?)(\s*\/)/, '\u2066$1\u2069$2');
+  };
+  // Arabic steps that are only a copy of the English ones don't count, so the library's Arabic steps can show.
+  const arOwnSteps = (ex) => (ex.ar && ex.ar.steps && ex.ar.steps.length && ex.ar.steps.join('\n') !== (ex.steps || []).join('\n') ? ex.ar.steps : null);
+  const exSteps = (ex) => (L() && (arOwnSteps(ex) || libArSteps(ex))) || ex.steps || [];
   const exField = (ex, k) => (L() && ex.ar && ex.ar[k]) || ex[k] || '';
   const sName = (s) => (L() && s.ar && s.ar.name) || s.name;
   const sFocus = (s) => (L() && s.ar && s.ar.focus) || s.focus || '';
@@ -170,7 +192,7 @@
   const sessionById = (id) => sessions().find((s) => s.id === id);
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   const exById = (id) => { for (const s of sessions()) { const e = s.exercises.find((x) => x.id === id); if (e) return e; } return null; };
-  const entryName = (e) => { const ex = exById(e.exId); return ex ? exName(ex) : e.name; };
+  const entryName = (e) => { const ex = exById(e.exId); return ex ? exName(ex) : (L() && arByName(e.name)) || e.name; };
   const workoutName = (w) => { const s = sessionById(w.sessionId); return s ? sName(s) : w.name; };
 
   function parseReps(str) {
@@ -228,13 +250,22 @@
     return null;
   }
   function fmtWeight(w) { return w == null || w === '' ? '' : String(+(+w).toFixed(2)); }
+  // Weights are always saved in kg. Machines marked in pounds can be logged in lb: the pound number is kept too.
+  const LB = 0.45359237;
+  const toKg = (lb) => Math.round(lb * LB * 10) / 10;
+  const toLb = (kg) => Math.round((kg / LB) * 10) / 10;
+  const isLb = (ex) => !!ex && ex.unit === 'lb' && !ex.noWeight;
+  const unitOf = (ex) => (isLb(ex) ? 'lb' : 'kg');
+  const setLb = (s) => (s.w == null || s.w === '' ? '' : fmtWeight(s.lb != null ? s.lb : toLb(+s.w)));
+  const convText = (v) => (v === '' || v == null || !isFinite(+v) ? '' : `= ${fmtWeight(toKg(+v))} ${t('kgH')}`);
   function fmtSets(sets, noWeight) {
     if (!sets || !sets.length) return '';
     const reps = sets.map((s) => s.r).join(', ');
-    const ws = sets.map((s) => fmtWeight(s.w));
+    const inLb = !noWeight && sets.some((s) => s.lb != null);
+    const ws = sets.map((s) => (inLb ? setLb(s) : fmtWeight(s.w)));
     if (noWeight || ws.every((w) => w === '')) return `${reps} ${t('repsWord')}`;
-    if (ws.every((w) => w === ws[0])) return `${ws[0]} kg × ${reps}`;
-    return sets.map((s) => `${fmtWeight(s.w) || 'BW'}×${s.r}`).join(', ');
+    if (ws.every((w) => w === ws[0])) return inLb ? `${ws[0]} lb (${fmtWeight(sets[0].w)} kg) × ${reps}` : `${ws[0]} kg × ${reps}`;
+    return sets.map((s, i) => `${ws[i] || 'BW'}×${s.r}`).join(', ') + (inLb ? ' lb' : '');
   }
   const setsHTML = (sets, noWeight) => `<bdi class="num">${esc(fmtSets(sets, noWeight))}</bdi>`;
   function topSet(sets) {
@@ -288,12 +319,15 @@
 
   // ---------- Toast ----------
   let toastTimer, toastOutTimer;
-  function toast(msg) {
+  // action: { label, fn } adds a button (used for Undo) and keeps the toast up longer.
+  function toast(msg, action) {
     const root = $('#toast-root');
-    root.innerHTML = `<div class="toast" role="status">${esc(msg)}</div>`;
+    root.innerHTML = `<div class="toast${action ? ' has-act' : ''}" role="status"><span>${esc(msg)}</span>${action ? `<button type="button" class="toast-act">${ICON.undo}${esc(action.label)}</button>` : ''}</div>`;
     clearTimeout(toastTimer); clearTimeout(toastOutTimer);
-    toastOutTimer = setTimeout(() => { const el = $('.toast', root); if (el) el.classList.add('out'); }, 2600);
-    toastTimer = setTimeout(() => { root.innerHTML = ''; }, 2900);
+    if (action) $('.toast-act', root).addEventListener('click', () => { clearTimeout(toastTimer); clearTimeout(toastOutTimer); root.innerHTML = ''; action.fn(); });
+    const life = action ? 8000 : 2600;
+    toastOutTimer = setTimeout(() => { const el = $('.toast', root); if (el) el.classList.add('out'); }, life);
+    toastTimer = setTimeout(() => { root.innerHTML = ''; }, life + 300);
   }
 
   // ---------- Body map ----------
@@ -450,16 +484,44 @@
 
   // ---------- Workout state ----------
   const newSet = () => ({ w: '', r: '', done: false });
+  // Set rows hold the weight in the unit shown. If the unit changes, typed weights are converted.
   function exState(ex) {
-    if (!current.ex[ex.id]) current.ex[ex.id] = { sets: Array.from({ length: Math.min(START_ROWS, targetSets(ex)) }, newSet), done: false };
-    return current.ex[ex.id];
+    const u = unitOf(ex);
+    if (!current.ex[ex.id]) current.ex[ex.id] = { sets: Array.from({ length: Math.min(START_ROWS, targetSets(ex)) }, newSet), done: false, u };
+    const st = current.ex[ex.id];
+    if ((st.u || 'kg') !== u) {
+      st.sets.forEach((s) => { if (s.w !== '' && s.w != null && isFinite(+s.w)) s.w = String(u === 'lb' ? toLb(+s.w) : toKg(+s.w)); });
+      st.u = u;
+    }
+    return st;
   }
   const goalOf = (ex, st) => Math.max(targetSets(ex), st.sets.length);
   function placeholders(ex, i) {
     const last = lastEntry(ex.id);
     if (!last || !last.sets.length) return { w: '', r: '' };
     const s = last.sets[Math.min(i, last.sets.length - 1)];
-    return { w: fmtWeight(s.w), r: String(s.r) };
+    return { w: isLb(ex) ? setLb(s) : fmtWeight(s.w), r: String(s.r) };
+  }
+  // What to write in the weight box depends on the equipment.
+  function equipOf(ex) {
+    const n = String(ex.name || '').toLowerCase();
+    if (/dumbbell|\bdb\b/.test(n)) return 'dumbbell';
+    if (/machine|smith|pec deck|leg press|hack squat|leg curl|leg extension|seated calf|lever/.test(n)) return 'machine';
+    if (/cable|pulldown|pushdown|pulley|pallof|face pull/.test(n)) return 'cable';
+    if (/barbell|ez.?bar|\bbb\b/.test(n)) return 'barbell';
+    const e = ex.library && LIB_BY_ID.get(ex.library);
+    return e ? eqGroup(e) : 'other';
+  }
+  function setExUnit(exId, u) {
+    sessions().forEach((s) => s.exercises.forEach((e) => { if (e.id === exId) { if (u === 'lb') e.unit = 'lb'; else delete e.unit; } }));
+    saveProgram();
+    if (current && current.ex[exId]) {
+      const s = sessionById(current.sessionId);
+      const ex = s && s.exercises.find((x) => x.id === exId);
+      if (ex) { exState(ex); saveCurrent(); }
+    }
+    render();
+    toast(u === 'lb' ? t('unitLbOn') : t('unitKgOn'));
   }
   function nextUndone(s, afterIdx) {
     const list = s.exercises;
@@ -538,10 +600,14 @@
     const s = sessionById(current.sessionId);
     const entries = [];
     (s ? s.exercises : []).forEach((ex) => {
-      const st = current.ex[ex.id];
-      if (!st) return;
-      const done = st.sets.filter((x) => x.done).map((x) => ({ w: x.w === '' || ex.noWeight ? null : +x.w, r: +x.r }));
-      if (done.length) entries.push({ exId: ex.id, name: ex.name, reps: ex.reps, targetSets: targetSets(ex), noWeight: !!ex.noWeight, sets: done });
+      if (!current.ex[ex.id]) return;
+      const st = exState(ex);
+      const lb = isLb(ex);
+      const done = st.sets.filter((x) => x.done).map((x) => {
+        if (x.w === '' || ex.noWeight) return { w: null, r: +x.r };
+        return lb ? { w: toKg(+x.w), lb: +x.w, r: +x.r } : { w: +x.w, r: +x.r };
+      });
+      if (done.length) entries.push({ exId: ex.id, name: ex.name, reps: ex.reps, targetSets: targetSets(ex), noWeight: !!ex.noWeight, ...(lb ? { unit: 'lb' } : {}), sets: done });
     });
     if (!entries.length) {
       if (confirm(t('noSetsDiscard'))) discardWorkout(true);
@@ -740,7 +806,9 @@
   }
   function topLabel(sets, noWeight) {
     const [w, r] = scoreOf(sets, noWeight);
-    return noWeight || !isFinite(w) ? `${r}` : `${fmtWeight(w)}×${r}`;
+    if (noWeight || !isFinite(w)) return `${r}`;
+    const top = sets.find((s) => s.w != null && +s.w === w && +s.r === r);
+    return top && top.lb != null ? `${fmtWeight(top.lb)} lb×${r}` : `${fmtWeight(w)}×${r}`;
   }
   function sheetProgress() {
     const status = exStatuses();
@@ -789,7 +857,7 @@
       const pair = ex.supersetWithNext && s.exercises[i + 1] ? `<span class="pair-mark">${ICON.link}${esc(t('supersetWith', exName(s.exercises[i + 1])))}</span>` : '';
       const urls = photoUrls(ex.library);
       const zoom = urls ? ` data-act="zoom" data-srcs="${esc(urls.join('|'))}" data-title="${esc(exName(ex))}" role="button"` : '';
-      return `<li style="--d:${i}"${zoom}>${thumbHTML(ex)}<span class="pv-txt"><span class="pv-name">${esc(exName(ex))}</span>${pair}</span><span class="t"><bdi>${setsRange(ex)} × ${esc(ex.reps)}</bdi></span></li>`;
+      return `<li style="--d:${i}"${zoom}>${thumbHTML(ex)}<span class="pv-txt"><span class="pv-name">${esc(exName(ex))}</span>${pair}</span><span class="t"><bdi>${setsRange(ex)} × ${esc(repsL(ex.reps))}</bdi></span></li>`;
     }).join('');
     const heroCls = ui.intro ? ' intro' : ui.popPlate ? ' swap' : '';
     return `
@@ -838,7 +906,7 @@
       return `<li class="${cls}" id="ex-${esc(ex.id)}">
         <button class="ex-head" data-act="toggle" data-ex="${esc(ex.id)}" aria-expanded="${open}">
           <span class="badge">${ring}<span class="n">${st.done ? ICON.check : idx + 1}</span></span>
-          <span class="txt"><span class="name">${esc(exName(ex))}</span><span class="meta">${esc(t('setsLabel', Math.min(START_ROWS, targetSets(ex)), targetSets(ex)))} × <bdi>${esc(ex.reps)}</bdi>${comma()}${esc(restText)}</span></span>
+          <span class="txt"><span class="name">${esc(exName(ex))}</span><span class="meta">${esc(t('setsLabel', Math.min(START_ROWS, targetSets(ex)), targetSets(ex)))} × <bdi>${esc(repsL(ex.reps))}</bdi>${comma()}${esc(restText)}</span></span>
           <span class="count"><bdi>${doneCount}/${goal}</bdi></span>
           <span class="chev">${ICON.chev}</span>
         </button>
@@ -863,13 +931,15 @@
     const tip = progressionTip(ex, last);
     const target = targetSets(ex);
     const hasRm = st.sets.some((set, i) => i >= START_ROWS && !set.done);
+    const u = unitOf(ex);
     const rows = st.sets.map((set, i) => {
       const ph = placeholders(ex, i);
       const removable = i >= START_ROWS && !set.done;
       const just = ui.flash === `${ex.id}:${i}`;
+      const conv = u === 'lb' ? `<span class="conv${set.w === '' ? ' ph' : ''}" aria-hidden="true">${esc(convText(set.w !== '' ? set.w : ph.w))}</span>` : '';
       return `<div class="srow${set.done ? ' done' : ''}${just ? ' just' : ''}">
         <span class="sn">${i + 1}</span>
-        ${ex.noWeight ? '' : `<input type="number" step="any" data-f="w" data-ex="${esc(ex.id)}" data-i="${i}" value="${esc(set.w)}" placeholder="${esc(ph.w)}" aria-label="${esc(t('setW', i + 1))}">`}
+        ${ex.noWeight ? '' : `<div class="wcell${u === 'lb' ? ' lb' : ''}"><input type="number" step="any" data-f="w" data-ex="${esc(ex.id)}" data-i="${i}" value="${esc(set.w)}" placeholder="${esc(ph.w)}" aria-label="${esc(t('setW', i + 1, t(u === 'lb' ? 'lbH' : 'kgH')))}">${conv}</div>`}
         <input type="number" inputmode="numeric" data-f="r" data-ex="${esc(ex.id)}" data-i="${i}" value="${esc(set.r)}" placeholder="${esc(ph.r)}" aria-label="${esc(t('setR', i + 1))}">
         <button class="chk" data-act="check" data-ex="${esc(ex.id)}" data-i="${i}" aria-pressed="${set.done}" aria-label="${esc(t('setDone', i + 1))}">${ICON.tick}</button>
         ${hasRm ? (removable ? `<button class="srm" data-act="rmset" data-ex="${esc(ex.id)}" data-i="${i}" aria-label="${esc(t('removeSetN', i + 1))}">${ICON.x}</button>` : '<span></span>') : ''}
@@ -908,10 +978,10 @@
       <p class="last">${lastTxt}</p>
       ${tip ? `<div class="progress-tip">${ICON.trend}<span>${esc(tip)}</span></div>` : ''}
       <div class="sets${ex.noWeight ? ' nw' : ''}${hasRm ? ' has-rm' : ''}">
-        <div class="sets-h"><span>${t('setH')}</span>${ex.noWeight ? '' : `<span>${t('kgH')}</span>`}<span>${t('repsH')}</span><span></span>${hasRm ? '<span></span>' : ''}</div>
+        <div class="sets-h"><span>${t('setH')}</span>${ex.noWeight ? '' : `<label class="unit-pick${u === 'lb' ? ' lb' : ''}"><select data-unit-ex="${esc(ex.id)}" aria-label="${esc(t('unitAria'))}"><option value="kg"${u === 'kg' ? ' selected' : ''}>${t('kgH')}</option><option value="lb"${u === 'lb' ? ' selected' : ''}>${t('lbH')}</option></select>${ICON.chev}</label>`}<span>${t('repsH')}</span><span></span>${hasRm ? '<span></span>' : ''}</div>
         ${rows}
       </div>
-      ${weightHint ? `<p class="small muted">${esc(weightHint)}</p>` : ''}
+      ${ex.noWeight ? '' : `<p class="w-hint">${esc(weightHint || t('wHint')[equipOf(ex)] || t('wHint').other)}${u === 'lb' ? ` ${esc(t('lbNote'))}` : ''}</p>`}
       ${actions}
       ${howto}
     </div>`;
@@ -963,7 +1033,7 @@
       if (!byEx.has(e.exId)) byEx.set(e.exId, { name: e.name, noWeight: e.noWeight, rows: [] });
       const v = byEx.get(e.exId); v.name = e.name; v.rows.push({ date: w.start, sets: e.sets, easy: !!w.easy });
     }));
-    byEx.forEach((v, id) => { const ex = exById(id); v.label = ex ? exName(ex) : v.name; });
+    byEx.forEach((v, id) => { const ex = exById(id); v.label = ex ? exName(ex) : (L() && arByName(v.name)) || v.name; });
     return byEx;
   }
   function spark(vals, o = {}) {
@@ -980,10 +1050,11 @@
   function viewProgram() {
     const n = sessionById(nextSessionId());
     document.body.dataset.plate = plateOf(n);
-    const secs = sessions().map((s) => {
+    const all = sessions();
+    const secs = all.map((s, si) => {
       const exs = s.exercises.map((ex, i) => {
         const partner = ex.supersetWithNext && s.exercises[i + 1];
-        const meta = `${ex.sets} × <bdi>${esc(ex.reps)}</bdi>${comma()}${esc(partner ? t('ssWithLower', exName(partner)) : t('restX', fmtRest(ex.rest)))}${!ex.library && !ex.photo ? esc(comma() + t('noPhotoShort')) : ''}`;
+        const meta = `${ex.sets} × <bdi>${esc(repsL(ex.reps))}</bdi>${comma()}${esc(partner ? t('ssWithLower', exName(partner)) : t('restX', fmtRest(ex.rest)))}${isLb(ex) ? esc(comma() + t('inLb')) : ''}${!ex.library && !ex.photo ? esc(comma() + t('noPhotoShort')) : ''}`;
         return `<div class="prog-ex">
           <div class="info" data-act="edit-ex" data-session="${esc(s.id)}" data-ex="${esc(ex.id)}" role="button" tabindex="0">
             <div class="nm">${esc(exName(ex))}</div><div class="mt">${meta}</div></div>
@@ -992,8 +1063,10 @@
           <button class="icon-btn" data-act="edit-ex" data-session="${esc(s.id)}" data-ex="${esc(ex.id)}" aria-label="${esc(t('editX', exName(ex)))}">${ICON.edit}</button>
         </div>`;
       }).join('');
-      return `<section class="prog-session" data-plate="${plateOf(s)}">
+      return `<section class="prog-session${ui.movedSession === s.id ? ' moved' : ''}" data-plate="${plateOf(s)}" id="ps-${esc(s.id)}">
         <div class="prog-session-head"><span class="pchip" aria-hidden="true"></span><div class="grow"><h3>${esc(sName(s))}</h3><div class="small muted">${esc(sFocus(s))}</div></div>
+          ${all.length > 1 ? `<button class="icon-btn" data-act="move-session" data-dir="-1" data-session="${esc(s.id)}" ${si === 0 ? 'disabled' : ''} aria-label="${esc(t('moveUp', sName(s)))}">${ICON.up}</button>
+          <button class="icon-btn" data-act="move-session" data-dir="1" data-session="${esc(s.id)}" ${si === all.length - 1 ? 'disabled' : ''} aria-label="${esc(t('moveDown', sName(s)))}">${ICON.down}</button>` : ''}
           <button class="btn sm soft" data-act="edit-session" data-session="${esc(s.id)}">${t('edit')}</button></div>
         ${exs || `<p class="muted" style="padding:12px 0 0">${t('noExercises')}</p>`}
         <button class="btn sm soft" style="margin-top:10px" data-act="add-ex" data-session="${esc(s.id)}">${ICON.plus}${t('addExercise')}</button>
@@ -1001,6 +1074,7 @@
     }).join('');
     return `<h2 class="page-title">${t('program')}</h2>
       <p class="muted">${esc(t('programDesc', program.name || ''))}</p>
+      ${all.length > 1 ? `<p class="order-line"><span class="small muted">${esc(t('orderNow'))}</span> <span class="order-chain">${all.map((s) => `<b data-plate="${plateOf(s)}">${esc(sName(s))}</b>`).join('<span aria-hidden="true">›</span>')}</span></p>` : ''}
       <div class="panel coach-panel">
         <h3>${ICON.sparkle}${t('coachT')}</h3>
         <p class="small">${t('coachText')}</p>
@@ -1208,13 +1282,14 @@
   function newExerciseDraft(sessionId, libId) {
     const e = libId ? LIB_BY_ID.get(libId) : null;
     const primary = e ? libMuscles(e, e.p) : [];
+    const ar = e && LIB_AR[e.id];
     return {
       sessionId, isNew: true,
-      ex: {
+      ex: Object.assign({
         id: '', name: e ? e.n : '', sets: 3, reps: '8–12', rest: 90, library: e ? e.id : null, cue: '',
         steps: e ? e.st.slice() : [], primary, secondary: e ? libMuscles(e, e.s).filter((m) => !primary.includes(m)) : [],
         supersetWithNext: false, noWeight: !!(e && e.eq === 'body only')
-      }
+      }, ar ? { ar: Object.assign({ name: ar[0] }, ar[1] ? { steps: ar[1].slice() } : {}) } : {})
     };
   }
   function sheetEditExercise(draft) {
@@ -1225,7 +1300,7 @@
     openSheet(`
       <h3>${draft.isNew ? t('newExercise') : t('editExercise')}</h3>
       <form id="ex-form" autocomplete="off">
-        ${L() ? `<label class="field"><span>${t('nameArF')}</span><input name="arname" value="${esc(ar.name || '')}"></label>` : ''}
+        ${L() ? `<label class="field"><span>${t('nameArF')}</span><input name="arname" value="${esc(ar.name || arByName(ex.name))}"></label>` : ''}
         <label class="field"><span>${L() ? t('nameEnF') : t('nameF')}</span><input name="name" dir="auto" value="${esc(ex.name)}" required ${draft.isNew && !ex.name ? 'autofocus' : ''}>${L() ? `<div class="help">${t('nameEnHelp')}</div>` : ''}</label>
         <div class="grid3">
           <label class="field"><span>${t('setsF')}</span><input name="sets" type="number" inputmode="numeric" min="1" max="10" value="${esc(ex.sets)}"></label>
@@ -1234,11 +1309,14 @@
         </div>
         <p class="help" style="margin:-6px 0 14px">${t('setsHelp')}</p>
         <label class="field"><span>${t('cueF')}</span><textarea name="cue" rows="2" style="min-height:64px">${esc(L() ? ar.cue || ex.cue || '' : ex.cue)}</textarea></label>
-        <label class="field"><span>${t('stepsF')}</span><textarea name="steps" rows="5">${esc((L() && ar.steps && ar.steps.length ? ar.steps : ex.steps || []).join('\n'))}</textarea><div class="help">${t('oneStep')}</div></label>
+        <label class="field"><span>${t('stepsF')}</span><textarea name="steps" rows="5">${esc(((L() && (arOwnSteps(ex) || libArSteps(ex))) || ex.steps || []).join('\n'))}</textarea><div class="help">${t('oneStep')}</div></label>
         <div class="field"><span>${t('mainMuscles')}</span><div class="chips" data-group="primary">${chips('primary', '')}</div></div>
         <div class="field"><span>${t('alsoWorks')}</span><div class="chips" data-group="secondary">${chips('secondary', 'sec')}</div></div>
         <label class="check-row"><input type="checkbox" name="supersetWithNext" ${ex.supersetWithNext ? 'checked' : ''}> ${t('ssNext')}</label>
         <label class="check-row"><input type="checkbox" name="noWeight" ${ex.noWeight ? 'checked' : ''}> ${t('bwOnly')}</label>
+        <div class="field"><span>${t('unitF')}</span>
+          <div class="seg" style="--n:2"><label><input type="radio" name="unit" value="kg" ${ex.unit === 'lb' ? '' : 'checked'}><span>${t('kgLong')}</span></label><label><input type="radio" name="unit" value="lb" ${ex.unit === 'lb' ? 'checked' : ''}><span>${t('lbLong')}</span></label></div>
+          <div class="help">${t('unitHelp')}</div></div>
         <div class="field"><span>${t('photoF')}</span>
           ${(ex.library || ex.photo) ? photoHTML(ex) : ''}
           <p class="small muted" style="margin:6px 0">${esc(photoNow)}</p>
@@ -1267,13 +1345,16 @@
     const cue = f.cue.value.trim();
     const steps = f.steps.value.split('\n').map((x) => x.trim()).filter(Boolean);
     if (L()) {
-      ex.ar = Object.assign({}, ex.ar || {}, { name: f.arname.value.trim(), cue, steps });
+      // Untouched English steps are not saved as Arabic.
+      const arSteps = steps.join('\n') === (ex.steps || []).join('\n') ? [] : steps;
+      ex.ar = Object.assign({}, ex.ar || {}, { name: f.arname.value.trim(), cue, steps: arSteps });
       if (!ex.cue) ex.cue = '';
     } else { ex.cue = cue; ex.steps = steps; }
     ex.primary = [...f.querySelectorAll('[data-group="primary"] [aria-pressed="true"]')].map((b) => b.dataset.m);
     ex.secondary = [...f.querySelectorAll('[data-group="secondary"] [aria-pressed="true"]')].map((b) => b.dataset.m).filter((m) => !ex.primary.includes(m));
     ex.supersetWithNext = f.supersetWithNext.checked;
     ex.noWeight = f.noWeight.checked;
+    if (f.unit.value === 'lb') ex.unit = 'lb'; else delete ex.unit;
   }
   function saveExerciseDraft() {
     readExerciseForm();
@@ -1290,6 +1371,8 @@
       const i = s.exercises.findIndex((e) => e.id === d.origId);
       s.exercises[i] = clone(ex);
     }
+    // The same exercise in another session is the same machine, so it gets the same unit.
+    sessions().forEach((s2) => s2.exercises.forEach((e) => { if (e.id === ex.id) { if (ex.unit === 'lb') e.unit = 'lb'; else delete e.unit; } }));
     saveProgram();
     closeSheet();
     render();
@@ -1314,7 +1397,7 @@
     f.shown = LIB_PAGE;
     const chipRow = (act, items, cur) => `<div class="chip-scroll" role="group">${items.map(([v, l]) => `<button type="button" class="chip" data-act="${act}" data-v="${esc(v)}" aria-pressed="${v === cur}">${esc(l)}</button>`).join('')}</div>`;
     openSheet(`<h3>${mode === 'photo' ? t('chooseAPhoto') : t('addAnExercise')}</h3>
-      <label class="field"><span>${esc(t('searchN', LIBRARY.length))}</span><input type="search" id="lib-q" dir="ltr" placeholder="${esc(t('searchPh'))}" value="${esc(f.q)}"></label>
+      <label class="field"><span>${esc(t('searchN', LIBRARY.length))}</span><input type="search" id="lib-q" dir="auto" placeholder="${esc(t('searchPh'))}" value="${esc(f.q)}"></label>
       <p class="filter-label">${t('libMuscle')}</p>
       ${chipRow('lib-muscle', [['all', t('allF')], ...LIB_MUSCLES.map((m) => [m, libMuscleName(m)])], f.muscle)}
       <p class="filter-label">${t('libEquip')}</p>
@@ -1330,14 +1413,18 @@
   const GYM_TYPES = new Set(['strength', 'powerlifting']);
   // Gym equipment first, then bodyweight, then the rest; advanced moves last in each group; then A to Z.
   const libRank = (e) => ({ machine: 0, cable: 0, dumbbell: 0, barbell: 0, body: 1, other: 2 }[eqGroup(e)] * 2 + (e.lv === 'e' ? 1 : 0));
-  const LIB_SORTED = [...LIBRARY].sort((a, b) => libRank(a) - libRank(b) || a.n.localeCompare(b.n));
+  const libSorted = {};
+  const sortKey = (e) => libNameL(e).replace(/^ال/, '');
+  const libSort = () => libSorted[settings.lang] || (libSorted[settings.lang] = [...LIBRARY].sort((a, b) => libRank(a) - libRank(b) || sortKey(a).localeCompare(sortKey(b), locale())));
+  const libSearchText = (e) => `${norm(e.n)} ${LIB_AR[e.id] ? normAr(LIB_AR[e.id][0]) : ''}`;
   function libFiltered() {
     const f = ui.lib;
-    const words = norm(f.q) ? f.q.toLowerCase().split(/\s+/).map(norm).filter(Boolean) : [];
-    return LIB_SORTED.filter((e) => (f.all || GYM_TYPES.has(e.c))
+    // Search works with English or Arabic words; each word must match.
+    const words = f.q.trim() ? f.q.trim().split(/\s+/).map((w) => norm(w) || normAr(w)).filter(Boolean) : [];
+    return libSort().filter((e) => (f.all || GYM_TYPES.has(e.c))
       && (f.muscle === 'all' || (e.p || []).includes(f.muscle))
       && (f.eq === 'all' || eqGroup(e) === f.eq)
-      && (!words.length || words.every((w) => norm(e.n).includes(w))));
+      && (!words.length || words.every((w) => libSearchText(e).includes(w))));
   }
   function libRow(e) {
     const urls = photoUrls(e.id);
@@ -1349,8 +1436,8 @@
       e.lv ? t('levelL')[e.lv] : ''
     ].filter(Boolean).join(comma());
     return `<li class="lib-row">
-      <button class="lib-thumb" data-act="zoom" data-srcs="${esc(urls.join('|'))}" data-title="${esc(e.n)}" aria-label="${esc(t('previewX', e.n))}"><img class="thumb" src="${thumbSrc}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="zoom-ic">${ICON.expand}</span></button>
-      <button class="lib-pick" data-act="lib-choose" data-lib="${esc(e.id)}"><span class="rn" dir="ltr">${esc(e.n)}</span><span class="r-meta">${esc(meta)}</span></button>
+      <button class="lib-thumb" data-act="zoom" data-srcs="${esc(urls.join('|'))}" data-title="${esc(libNameL(e))}" aria-label="${esc(t('previewX', libNameL(e)))}"><img class="thumb" src="${thumbSrc}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="zoom-ic">${ICON.expand}</span></button>
+      <button class="lib-pick" data-act="lib-choose" data-lib="${esc(e.id)}"><span class="rn"${libNameL(e) === e.n ? ' dir="ltr"' : ''}>${esc(libNameL(e))}</span>${libNameL(e) !== e.n ? `<span class="r-en" dir="ltr">${esc(e.n)}</span>` : ''}<span class="r-meta">${esc(meta)}</span></button>
     </li>`;
   }
   function renderLibResults() {
@@ -1386,8 +1473,9 @@
         ${s ? `<div class="row wrap" style="margin-bottom:12px">
           <button type="button" class="btn sm soft" data-act="move-session" data-dir="-1" ${idx === 0 ? 'disabled' : ''}>${t('moveEarlier')}</button>
           <button type="button" class="btn sm soft" data-act="move-session" data-dir="1" ${idx === sessions().length - 1 ? 'disabled' : ''}>${t('moveLater')}</button></div>` : ''}
-        <div class="row"><button type="submit" class="btn primary grow">${t('saveSession')}</button>${s ? `<button type="button" class="btn danger" data-act="delete-session">${t('del')}</button>` : ''}</div>
+        <button type="submit" class="btn primary wide">${t('saveSession')}</button>
         <button type="button" class="btn ghost wide" data-act="close-sheet">${t('cancel')}</button>
+        ${s ? `<button type="button" class="btn ghost danger wide del-far" data-act="delete-session">${t('deleteSession')}</button>` : ''}
       </form>`, { sessionId, color });
   }
 
@@ -1463,14 +1551,14 @@
         exercises: s.exercises.map((ex) => ({
           name: ex.name, sets: ex.sets, reps: ex.reps.replace(/–/g, '-'), rest: ex.rest, cue: ex.cue || '',
           primary: ex.primary || [], secondary: ex.secondary || [], library: ex.library ? libName(ex.library) : null,
-          supersetWithNext: !!ex.supersetWithNext, ...(ex.noWeight ? { noWeight: true } : {})
+          supersetWithNext: !!ex.supersetWithNext, ...(ex.noWeight ? { noWeight: true } : {}), ...(isLb(ex) ? { unit: 'lb' } : {})
         }))
       }))
     };
   }
   function enSets(sets, noWeight) {
     if (noWeight) return `${sets.map((s) => s.r).join(', ')} reps`;
-    const ws = sets.map((s) => (s.w == null ? 'bodyweight' : `${fmtWeight(s.w)} kg`));
+    const ws = sets.map((s) => (s.w == null ? 'bodyweight' : `${fmtWeight(s.w)} kg${s.lb != null ? ` (${fmtWeight(s.lb)} lb)` : ''}`));
     return ws.every((w) => w === ws[0]) ? `${ws[0]} x ${sets.map((s) => s.r).join(', ')}` : sets.map((s, i) => `${ws[i]} x ${s.r}`).join(', ');
   }
   function coachPrompt(preset, note) {
@@ -1498,6 +1586,8 @@
     add(`- Sessions rotate in this order with no fixed weekdays: ${sessions().map((s) => s.name).join(' → ')} → repeat.`);
     add('- Each exercise starts with 2 sets. When I feel good I add sets up to the target number of sets.');
     add('- Double progression: when I reach the top of the rep range on every set, I add the smallest weight jump next time.');
+    add('- Weights are in kg and logged per set. Dumbbell weights are for one dumbbell. Machine and cable weights are the number at the pin (or the plates loaded). Barbell weights are the total, bar included.');
+    if (sessions().some((s) => s.exercises.some(isLb)) || log.sessions.some((w) => w.entries.some((e) => e.unit === 'lb'))) add('- Some machines in my gym are marked in pounds. I log those in lb and the app converts to kg; the pound number is shown in brackets.');
     add(`- Ease-in for the first 2 weeks (4-set exercises capped at 3): ${program.rampIn && program.rampIn.enabled ? (rampActive() ? 'on and active now' : 'on, already finished') : 'off'}.`);
     const wk = blockWeek();
     add(`- Training block: ${wk ? `week ${wk} of ${settings.blockWeeks || 8}` : 'not started'}. After the block the app suggests an easy (deload) week of 2 sets per exercise, 10–20% lighter. ${deloadActive() ? `I'm in an easy week now until ${fmtDateEN(settings.deload.end)}.` : ''}`.trim());
@@ -1507,7 +1597,7 @@
       add(`${s.name}${s.focus ? ` (${s.focus})` : ''}`);
       s.exercises.forEach((ex, i) => {
         const partner = ex.supersetWithNext && s.exercises[i + 1];
-        add(`  ${i + 1}. ${ex.name}: target ${ex.sets} sets x ${ex.reps.replace(/–/g, '-')} reps, rest ${ex.rest} s${partner ? `, superset with ${partner.name}` : ''}${ex.noWeight ? ', bodyweight' : ''}`);
+        add(`  ${i + 1}. ${ex.name}: target ${ex.sets} sets x ${ex.reps.replace(/–/g, '-')} reps, rest ${ex.rest} s${partner ? `, superset with ${partner.name}` : ''}${ex.noWeight ? ', bodyweight' : ''}${isLb(ex) ? ', machine marked in lb' : ''}`);
       });
     });
     add();
@@ -1568,6 +1658,7 @@
     add('   Rules for the JSON:');
     add('   - Sessions rotate in the order listed. "sets" is the target number of sets; "reps" is text such as "8-12", "10-15 / leg" or "8 / side"; "rest" is in seconds.');
     add('   - "supersetWithNext": true pairs an exercise with the one after it; the rest comes after the second one. Add "noWeight": true for bodyweight exercises.');
+    add('   - Keep "unit": "lb" on exercises that have it (machines marked in pounds). Leave it out for kg.');
     add(`   - Muscles must come from this list: ${MUSCLE_KEYS.join(', ')}.`);
     add('   - "library" is the exact name of an exercise in Free Exercise DB (github.com/yuhonas/free-exercise-db) that shows the same movement, so my app can show its photos. Use null if nothing fits.');
     add('   - Keep the name exactly the same for every exercise you keep, so my history stays linked. For exercises you keep you can leave out "steps"; write 3–6 short steps for every new exercise.');
@@ -1650,6 +1741,8 @@
       steps, primary, secondary: secondary.filter((m) => !primary.includes(m)),
       supersetWithNext: !!x.supersetWithNext, noWeight: x.noWeight == null && old ? !!old.noWeight : !!x.noWeight
     };
+    const unit = x.unit == null ? old && old.unit : String(x.unit).toLowerCase().replace(/s$/, '');
+    if (unit === 'lb') out.unit = 'lb';
     const ar = Object.assign({}, (old && old.ar) || {}, cleanAr(x.ar) || {});
     if (Object.keys(ar).length) out.ar = ar;
     if (old) ['photo', 'photoNote', 'weightHint'].forEach((k) => { if (old[k] && (k !== 'photoNote' || out.library === old.library)) out[k] = old[k]; });
@@ -1666,7 +1759,7 @@
       } else {
         const target = preview.target || (sessions()[0] && sessions()[0].id);
         body = `<div class="panel"><h3>${esc(t('nToAdd', preview.exercises.length))}</h3>
-          ${preview.exercises.map((e) => `<p class="small">${esc(exName(e))}: ${e.sets} × <bdi>${esc(e.reps)}</bdi></p>`).join('')}
+          ${preview.exercises.map((e) => `<p class="small">${esc(exName(e))}: ${e.sets} × <bdi>${esc(repsL(e.reps))}</bdi></p>`).join('')}
           <label class="field"><span>${t('addToSession')}</span><select id="import-target">${sessions().map((s) => `<option value="${esc(s.id)}" ${s.id === target ? 'selected' : ''}>${esc(sName(s))}</option>`).join('')}</select></label></div>${warn}
           <button class="btn primary big" data-act="apply-import">${t('addExercises')}</button>`;
       }
@@ -2108,17 +2201,41 @@
       case 'no-photo': readExerciseForm(); sheetState.ex.library = null; delete sheetState.ex.photo; sheetEditExercise(sheetState); break;
       case 'delete-ex': {
         if (!confirm(t('deleteExQ'))) break;
-        const s = sessionById(sheetState.sessionId); s.exercises = s.exercises.filter((x) => x.id !== sheetState.origId); saveProgram(); closeSheet(); render(); break;
+        const s = sessionById(sheetState.sessionId); const i = s.exercises.findIndex((x) => x.id === sheetState.origId);
+        const [gone] = s.exercises.splice(i, 1); saveProgram(); closeSheet(); render();
+        toast(t('exDeleted', exName(gone)), { label: t('undo'), fn: () => {
+          const s2 = sessionById(s.id);
+          if (!s2 || s2.exercises.some((x) => x.id === gone.id)) return;
+          s2.exercises.splice(Math.min(i, s2.exercises.length), 0, gone); saveProgram(); render(); toast(t('restoredX', exName(gone)));
+        } });
+        break;
       }
       case 'edit-session': sheetSession(sid || null); break;
       case 'swatch': $('#session-form').querySelectorAll('.swatch').forEach((b) => b.setAttribute('aria-pressed', String(b === el))); sheetState.color = el.dataset.color; break;
       case 'move-session': {
-        const list = program.sessions; const i = list.findIndex((s) => s.id === sheetState.sessionId); const j = i + +el.dataset.dir;
-        if (j < 0 || j >= list.length) break; [list[i], list[j]] = [list[j], list[i]]; saveProgram(); render(); sheetSession(sheetState.sessionId); break;
+        const fromSheet = !sid; const id = sid || sheetState.sessionId;
+        const list = program.sessions; const i = list.findIndex((s) => s.id === id); const j = i + +el.dataset.dir;
+        if (i < 0 || j < 0 || j >= list.length) break;
+        [list[i], list[j]] = [list[j], list[i]]; saveProgram();
+        if (fromSheet) { render(); sheetSession(id); break; }
+        ui.movedSession = id; render(); ui.movedSession = null;
+        const sec = document.getElementById(`ps-${id}`);
+        if (sec) {
+          sec.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'nearest' });
+          const b = sec.querySelector(`[data-act="move-session"][data-dir="${el.dataset.dir}"]`);
+          (b && !b.disabled ? b : sec.querySelector('[data-act="edit-session"]')).focus({ preventScroll: true });
+        }
+        break;
       }
       case 'delete-session': {
         if (!confirm(t('deleteSessionQ'))) break;
-        program.sessions = program.sessions.filter((s) => s.id !== sheetState.sessionId); saveProgram(); closeSheet(); render(); break;
+        const i = program.sessions.findIndex((s) => s.id === sheetState.sessionId);
+        const [gone] = program.sessions.splice(i, 1); saveProgram(); closeSheet(); render();
+        toast(t('sessionDeleted', sName(gone)), { label: t('undo'), fn: () => {
+          if (sessionById(gone.id)) return;
+          program.sessions.splice(Math.min(i, program.sessions.length), 0, gone); saveProgram(); render(); toast(t('restoredX', sName(gone)));
+        } });
+        break;
       }
       case 'profile-sheet': sheetProfile(); break;
       case 'toggle-setting': {
@@ -2165,12 +2282,15 @@
     if (el.dataset.f && current) {
       const st = current.ex[el.dataset.ex];
       if (st) { st.sets[+el.dataset.i][el.dataset.f] = el.value; saveCurrent(); }
+      const conv = el.dataset.f === 'w' && el.parentElement.querySelector('.conv');
+      if (conv) { conv.textContent = convText(el.value !== '' ? el.value : el.placeholder); conv.classList.toggle('ph', el.value === ''); }
     }
     if (el.id === 'lib-q') { ui.lib.q = el.value; ui.lib.shown = LIB_PAGE; renderLibResults(); }
   });
   document.addEventListener('change', async (e) => {
     const el = e.target;
     if (el.id === 'lib-all') { setLibFilter('all', el.checked); return; }
+    if (el.dataset.unitEx) { setExUnit(el.dataset.unitEx, el.value); return; }
     if (el.dataset.act === 'restore' && el.files[0]) { await restore(el.files[0]); el.value = ''; }
     if (el.dataset.act === 'own-photo' && el.files[0]) {
       readExerciseForm();

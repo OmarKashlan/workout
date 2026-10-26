@@ -138,7 +138,19 @@ Keep the big lifts for months. Swapping small exercises after a block or two is 
 
 ### Workout
 - Each exercise is a card. Open it to see the photos (tap to enlarge, with Play / Start / End), the muscle map, the cue, last time's numbers and the set rows.
-- Type kg and reps, tap the tick. The tick animates, the progress ring and the bar at the top fill up.
+- Type the weight and reps for each set, tap the tick. The tick animates, the progress ring and the bar at the top fill up.
+- **What weight to write** (a reminder appears under the sets of each exercise):
+
+  | Equipment | Write |
+  |---|---|
+  | Dumbbells | The weight of **one** dumbbell, not both added together |
+  | Barbell | The total: bar plus all plates |
+  | Machine with a weight stack | The number where the pin is |
+  | Plate-loaded machine | All the plates you added |
+  | Cable | The number where the pin is |
+  | Bodyweight | Only extra weight you add, or leave it empty |
+
+- **Machines marked in pounds:** tap **kg** above the weight column and pick **lb**. Type the number you see on the machine; the kg value appears under it, and that is what gets saved. The exercise remembers lb for next time (also in the exercise editor under **Weight unit**). Plates marked like "2.3 / 5" show both: 2.3 kg = 5 lb.
 - The **rest timer** starts by itself, vibrates and beeps when rest is over. **+15 s** and **Skip** are on the timer.
 - **Supersets** are linked: after a set of the first exercise you go straight to the second, then rest.
 - **Add set**, remove extra sets, **Done with this exercise**, and **Undo done** if you tapped it by mistake.
@@ -151,15 +163,17 @@ Keep the big lifts for months. Swapping small exercises after a block or two is 
 
 ### Program
 - **AI coach** panel (see below).
-- Edit, reorder, add or delete exercises and sessions.
+- Edit, reorder, add or delete exercises and sessions. The **arrows next to each session** change the rotation order, shown at the top of the page (for example Upper A › Lower A › Upper B › Lower B).
+- Deleted an exercise or session by mistake? Tap **Undo** on the message that appears (it stays for about 8 seconds).
 - **Add exercise** opens a built-in library of **873 exercises** that works offline. You don't need to know names:
   - filter by **muscle** (chest, shoulders, lats, quads, hamstrings, glutes, calves, abs, …) and **equipment** (machine, cable, dumbbell, barbell, bodyweight, other);
   - each exercise shows its muscles, equipment, compound or isolation, and difficulty;
   - tap the photo to preview the movement full screen, tap the name to add it;
   - **Show more** pages through the list, 30 at a time; gym equipment comes first;
   - stretches, cardio, jumps and Olympic lifts are hidden unless you tick the box;
-  - or search by name, or start from a blank exercise.
-- For each exercise: name (and Arabic name), target sets, reps, rest, cue, steps, main and secondary muscles, superset, bodyweight-only, and the photo (library photo, your own photo, or none).
+  - or search by name (in English or Arabic), or start from a blank exercise.
+  - In Arabic every library exercise has an Arabic name and Arabic steps, filled in automatically when you add it. Exercises you added earlier in English show in Arabic too, unless you renamed them or edited their steps.
+- For each exercise: name (and Arabic name), target sets, reps, rest, cue, steps, main and secondary muscles, superset, bodyweight-only, weight unit (kg or lb), and the photo (library photo, your own photo, or none).
 - Sessions have a name, focus and plate colour.
 
 ### Settings
@@ -193,7 +207,7 @@ You don't need to know what to ask. The app writes the prompt for you.
 
 The prompt contains your profile, how the app works, your whole program, your training log (frequency, recent workouts), every exercise's recent sets and best set, which exercises are improving or stuck, and the exact reply format. In Arabic mode the coach is asked to explain in Arabic and include Arabic exercise text.
 
-Exercises that keep the **same name keep their history**. Steps, photos and Arabic text you already have are kept when the coach leaves them out.
+Exercises that keep the **same name keep their history**. Steps, photos, Arabic text and the lb setting you already have are kept when the coach leaves them out. The prompt also tells the coach how you log weight (one dumbbell, the stack number, barbell total) and which machines are in pounds.
 
 <details>
 <summary>Reply format the app imports</summary>
@@ -348,6 +362,7 @@ app.js                  The whole app: views, workout logic, AI coach, import, s
 i18n.js                 English and Arabic interface text
 program.js              The default program, with Arabic text for every exercise
 library.js              Free Exercise DB index: 873 exercises (names, muscles, equipment, steps)
+library-ar.js           Arabic names and steps for the library, keyed by exercise id
 sw.js                   Service worker (generated by tools/build-sw.mjs)
 manifest.webmanifest    PWA manifest
 img/                    Built-in photos for the default program (2 per exercise)
@@ -380,10 +395,13 @@ It lists every file the app needs offline and sets a new version from a hash of 
 { id: 'w1792900000000', sessionId: 'upper-a', name: 'Upper A', color: 'red',
   start: 1792900000000, end: 1792903000000,   // easy: true during an easy week; editedAt after a date change
   entries: [{ exId: 'incline-dumbbell-press', name: 'Incline Dumbbell Press', reps: '6–10',
-              targetSets: 4, noWeight: false, sets: [{ w: 22.5, r: 10 }, { w: 22.5, r: 9 }] }] }
+              targetSets: 4, noWeight: false, sets: [{ w: 22.5, r: 10 }, { w: 22.5, r: 9 }] },
+             { exId: 'leg-press', name: 'Leg Press', reps: '8–12', targetSets: 4, noWeight: false,
+               unit: 'lb', sets: [{ w: 49.9, lb: 110, r: 12 }] }] }
 ```
 - Exercise ids are slugs of the English name, which is why keeping a name keeps its history.
-- `w` is kg (negative for assistance, `null` for bodyweight); `r` is reps.
+- `w` is always kg (negative for assistance, `null` for bodyweight); `r` is reps.
+- Exercises logged in pounds have `unit: 'lb'` in the program and on the entry; each set also keeps the pound number in `lb`, and `w` is that converted to kg (rounded to 0.1).
 
 ### Sync protocol
 Both servers implement the same tiny API. Every request carries `Authorization: Bearer <sync code>`.
@@ -400,7 +418,7 @@ The app pulls, merges, and pushes; on `409` it merges again and retries. Merging
 - body weight: one entry per day, latest wins.
 
 ### Adding a language
-Copy the `en` block in `i18n.js` to a new key, translate it, add muscle names to `MUSCLE_NAMES`, and add a button to the Language setting in `viewSettings()` in `app.js`. For right-to-left languages set `dir: 'rtl'`.
+Copy the `en` block in `i18n.js` to a new key, translate it, add muscle names to `MUSCLE_NAMES`, and add a button to the Language setting in `viewSettings()` in `app.js`. For right-to-left languages set `dir: 'rtl'`. For library exercise names and steps, add a file like `library-ar.js` (`window.LIBRARY_AR = { id: [name, [steps…]] }`).
 
 ---
 
