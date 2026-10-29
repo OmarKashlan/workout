@@ -55,6 +55,8 @@
     share: `${s1} stroke-width="2.1"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>`,
     user: `${s1} stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`,
     up: `${s1} stroke-width="2.2"><path d="M6 15l6-6 6 6"/></svg>`,
+    grip: `${s1} stroke-width="3.4"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/></svg>`,
+    swap: `${s1} stroke-width="2.1"><path d="M4 8h13l-4-4M20 16H7l4 4"/></svg>`,
     flat: `${s1} stroke-width="2.6"><path d="M5 12h14"/></svg>`,
     stuck: `${s1} stroke-width="2.6"><path d="M9 6v12M15 6v12"/></svg>`,
     dot: `${s1} stroke-width="2"><circle cx="12" cy="12" r="3.5"/></svg>`,
@@ -258,16 +260,20 @@
   const unitOf = (ex) => (isLb(ex) ? 'lb' : 'kg');
   const setLb = (s) => (s.w == null || s.w === '' ? '' : fmtWeight(s.lb != null ? s.lb : toLb(+s.w)));
   const convText = (v) => (v === '' || v == null || !isFinite(+v) ? '' : `= ${fmtWeight(toKg(+v))} ${t('kgH')}`);
-  function fmtSets(sets, noWeight) {
+  // lbPref: the exercise is marked lb now, so older sets logged in kg are shown in lb too.
+  function fmtSets(sets, noWeight, lbPref) {
     if (!sets || !sets.length) return '';
     const reps = sets.map((s) => s.r).join(', ');
-    const inLb = !noWeight && sets.some((s) => s.lb != null);
+    const inLb = !noWeight && (!!lbPref || sets.some((s) => s.lb != null));
     const ws = sets.map((s) => (inLb ? setLb(s) : fmtWeight(s.w)));
     if (noWeight || ws.every((w) => w === '')) return `${reps} ${t('repsWord')}`;
     if (ws.every((w) => w === ws[0])) return inLb ? `${ws[0]} lb (${fmtWeight(sets[0].w)} kg) × ${reps}` : `${ws[0]} kg × ${reps}`;
     return sets.map((s, i) => `${ws[i] || 'BW'}×${s.r}`).join(', ') + (inLb ? ' lb' : '');
   }
-  const setsHTML = (sets, noWeight) => `<bdi class="num">${esc(fmtSets(sets, noWeight))}</bdi>`;
+  const setsHTML = (sets, noWeight, lbPref) => `<bdi class="num">${esc(fmtSets(sets, noWeight, lbPref))}</bdi>`;
+  // Is this exercise (by id) marked lb anywhere in the program?
+  const lbById = (id) => sessions().some((s) => s.exercises.some((e) => e.id === id && isLb(e)));
+  const entryLb = (e) => e.unit === 'lb' || lbById(e.exId);
   function topSet(sets) {
     return sets.reduce((best, s) => {
       const w = s.w == null ? -Infinity : +s.w;
@@ -804,11 +810,11 @@
       ${stats}
     </section>`;
   }
-  function topLabel(sets, noWeight) {
+  function topLabel(sets, noWeight, lbPref) {
     const [w, r] = scoreOf(sets, noWeight);
     if (noWeight || !isFinite(w)) return `${r}`;
     const top = sets.find((s) => s.w != null && +s.w === w && +s.r === r);
-    return top && top.lb != null ? `${fmtWeight(top.lb)} lb×${r}` : `${fmtWeight(w)}×${r}`;
+    return top && (top.lb != null || lbPref) ? `${setLb(top)} lb×${r}` : `${fmtWeight(w)}×${r}`;
   }
   function sheetProgress() {
     const status = exStatuses();
@@ -817,7 +823,7 @@
       const rows = s.exercises.map((ex) => {
         const st = status.get(ex.id) || 'none';
         const v = hist.get(ex.id);
-        const last = v ? v.rows.filter((r) => !r.easy).slice(-4).map((r) => topLabel(r.sets, v.noWeight)).join(' → ') : '';
+        const last = v ? v.rows.filter((r) => !r.easy).slice(-4).map((r) => topLabel(r.sets, v.noWeight, isLb(ex))).join(' → ') : '';
         return `<li class="pg-row"><span class="grow"><span class="pg-name">${esc(exName(ex))}</span>${last ? `<bdi dir="ltr" class="pg-last num">${esc(last)}</bdi>` : ''}</span><span class="pill ${st}">${ICON[ST_ICON[st]]}${esc(t('st')[st])}</span></li>`;
       }).join('');
       return `<section class="pg-sec" data-plate="${plateOf(s)}"><div class="pg-head"><span class="pchip" aria-hidden="true"></span><b class="grow">${esc(sName(s))}</b>${sessionNeedsUpdate(s, status) ? `<span class="pill stuck">${t('needsUpdate')}</span>` : ''}</div><ul class="pg-list">${rows}</ul></section>`;
@@ -832,6 +838,14 @@
     if (ex.photo && ex.photo.startsWith('custom:')) return `<span class="thumb" data-custom="${esc(ex.photo.slice(7))}"></span>`;
     const urls = photoUrls(ex.library);
     return urls ? `<img class="thumb" src="${urls[0]}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : '<span class="thumb"></span>';
+  }
+  // Program page thumbnail: tap to see the photos large.
+  function progThumb(ex) {
+    const custom = ex.photo && ex.photo.startsWith('custom:') ? ex.photo.slice(7) : '';
+    const urls = photoUrls(ex.library);
+    if (!custom && !urls) return '<span class="p-thumb"><span class="thumb" aria-hidden="true"></span></span>';
+    const src = custom ? `data-custom="${esc(custom)}"` : `data-srcs="${esc(urls.join('|'))}"`;
+    return `<button class="p-thumb" data-act="zoom" ${src} data-title="${esc(exName(ex))}" aria-label="${esc(t('previewX', exName(ex)))}">${thumbHTML(ex)}</button>`;
   }
   const setsRange = (ex) => { const tg = targetSets(ex); return tg > START_ROWS ? `${START_ROWS}–${tg}` : `${tg}`; };
 
@@ -953,7 +967,7 @@
     const warm = idx === 0 && !st.sets.some((x) => x.done) ? `<div class="note">${ICON.flame}<span>${esc(t('warmUp'))}</span></div>` : '';
     const steps = exSteps(ex);
     const howto = steps.length ? `<details class="howto"${last ? '' : ' open'}><summary>${t('howTo')}</summary><ol>${steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></details>` : '';
-    const lastTxt = last ? `${esc(t('lastTime', relDay(last.date)))} ${setsHTML(last.sets, ex.noWeight)}` : esc(ex.noWeight ? t('firstTime') : t('firstTimeW'));
+    const lastTxt = last ? `${esc(t('lastTime', relDay(last.date)))} ${setsHTML(last.sets, ex.noWeight, isLb(ex))}` : esc(ex.noWeight ? t('firstTime') : t('firstTimeW'));
     const photoNote = exField(ex, 'photoNote');
     const weightHint = exField(ex, 'weightHint');
     const actions = waitingMore
@@ -1006,7 +1020,7 @@
               <span class="grow"><b>${esc(workoutName(w))}</b><span class="small muted block">${esc(t('histMeta', fmtDate(w.start), mins, sets, vol ? Math.round(vol).toLocaleString('en') : 0))}</span></span>
               <span class="chev">${ICON.chev}</span>
             </button>
-            ${open ? `<div class="hist-detail">${w.entries.map((e) => `<div class="hx"><b>${esc(entryName(e))}</b><br>${setsHTML(e.sets, e.noWeight)}</div>`).join('')}
+            ${open ? `<div class="hist-detail">${w.entries.map((e) => `<div class="hx"><b>${esc(entryName(e))}</b><br>${setsHTML(e.sets, e.noWeight, entryLb(e))}</div>`).join('')}
               <div class="row wrap"><button class="btn sm soft" data-act="date-sheet" data-id="${esc(w.id)}">${ICON.clock}${t('changeDate')}</button>
               <button class="btn sm soft danger" data-act="hist-del" data-id="${esc(w.id)}">${t('deleteWorkout')}</button></div></div>` : ''}
           </div>
@@ -1018,12 +1032,13 @@
     const items = [...byEx.entries()].sort((a, b) => a[1].label.localeCompare(b[1].label, locale())).map(([id, v], k) => {
       const open = ui.histOpen === `x:${id}`;
       const latest = v.rows[v.rows.length - 1];
-      const vals = v.rows.map((r) => (v.noWeight ? r.sets.reduce((a, s) => a + (+s.r || 0), 0) : topSet(r.sets).w)).filter((x) => isFinite(x));
+      const lbx = !v.noWeight && (lbById(id) || v.rows.some((r) => r.sets.some((x) => x.lb != null)));
+      const vals = v.rows.map((r) => (v.noWeight ? r.sets.reduce((a, s) => a + (+s.r || 0), 0) : topSet(r.sets).w)).filter((x) => isFinite(x)).map((x) => (lbx ? toLb(x) : x));
       const mini = vals.length > 1 ? spark(vals, { w: 72, h: 28, mini: true }) : '';
       const detail = open ? `<div class="hist-detail">${vals.length > 1 ? spark(vals, { draw: true }) : ''}<p class="small muted">${v.noWeight ? t('lineReps') : t('lineTop')}</p>
-        ${[...v.rows].reverse().slice(0, 12).map((r) => `<div class="hx"><span class="small muted">${esc(fmtDate(r.date))}</span><br>${setsHTML(r.sets, v.noWeight)}</div>`).join('')}</div>` : '';
+        ${[...v.rows].reverse().slice(0, 12).map((r) => `<div class="hx"><span class="small muted">${esc(fmtDate(r.date))}</span><br>${setsHTML(r.sets, v.noWeight, lbx)}</div>`).join('')}</div>` : '';
       return `<div class="hx-item" style="--d:${k}"><button data-act="hist-open" data-id="x:${esc(id)}" aria-expanded="${open}">
-        <span class="grow"><b>${esc(v.label)}</b><span class="small muted block">${esc(fmtDate(latest.date))}: ${setsHTML(latest.sets, v.noWeight)}</span></span>${mini}<span class="chev">${ICON.chev}</span></button>${detail}</div>`;
+        <span class="grow"><b>${esc(v.label)}</b><span class="small muted block">${esc(fmtDate(latest.date))}: ${setsHTML(latest.sets, v.noWeight, lbx)}</span></span>${mini}<span class="chev">${ICON.chev}</span></button>${detail}</div>`;
     }).join('');
     return `${title}${seg}<div class="hx-list${ui.intro ? ' intro' : ''}">${items}</div>`;
   }
@@ -1051,22 +1066,20 @@
     const n = sessionById(nextSessionId());
     document.body.dataset.plate = plateOf(n);
     const all = sessions();
-    const secs = all.map((s, si) => {
+    const secs = all.map((s) => {
       const exs = s.exercises.map((ex, i) => {
         const partner = ex.supersetWithNext && s.exercises[i + 1];
         const meta = `${ex.sets} × <bdi>${esc(repsL(ex.reps))}</bdi>${comma()}${esc(partner ? t('ssWithLower', exName(partner)) : t('restX', fmtRest(ex.rest)))}${isLb(ex) ? esc(comma() + t('inLb')) : ''}${!ex.library && !ex.photo ? esc(comma() + t('noPhotoShort')) : ''}`;
-        return `<div class="prog-ex">
+        return `<div class="prog-ex${ui.movedEx === `${s.id}:${ex.id}` ? ' moved' : ''}">
+          ${s.exercises.length > 1 ? `<button class="drag-h" data-drag="ex" data-session="${esc(s.id)}" data-ex="${esc(ex.id)}" aria-label="${esc(t('dragX', exName(ex)))}">${ICON.grip}</button>` : ''}
+          ${progThumb(ex)}
           <div class="info" data-act="edit-ex" data-session="${esc(s.id)}" data-ex="${esc(ex.id)}" role="button" tabindex="0">
             <div class="nm">${esc(exName(ex))}</div><div class="mt">${meta}</div></div>
-          <button class="icon-btn" data-act="move-ex" data-dir="-1" data-session="${esc(s.id)}" data-ex="${esc(ex.id)}" ${i === 0 ? 'disabled' : ''} aria-label="${esc(t('moveUp', exName(ex)))}">${ICON.up}</button>
-          <button class="icon-btn" data-act="move-ex" data-dir="1" data-session="${esc(s.id)}" data-ex="${esc(ex.id)}" ${i === s.exercises.length - 1 ? 'disabled' : ''} aria-label="${esc(t('moveDown', exName(ex)))}">${ICON.down}</button>
           <button class="icon-btn" data-act="edit-ex" data-session="${esc(s.id)}" data-ex="${esc(ex.id)}" aria-label="${esc(t('editX', exName(ex)))}">${ICON.edit}</button>
         </div>`;
       }).join('');
       return `<section class="prog-session${ui.movedSession === s.id ? ' moved' : ''}" data-plate="${plateOf(s)}" id="ps-${esc(s.id)}">
-        <div class="prog-session-head"><span class="pchip" aria-hidden="true"></span><div class="grow"><h3>${esc(sName(s))}</h3><div class="small muted">${esc(sFocus(s))}</div></div>
-          ${all.length > 1 ? `<button class="icon-btn" data-act="move-session" data-dir="-1" data-session="${esc(s.id)}" ${si === 0 ? 'disabled' : ''} aria-label="${esc(t('moveUp', sName(s)))}">${ICON.up}</button>
-          <button class="icon-btn" data-act="move-session" data-dir="1" data-session="${esc(s.id)}" ${si === all.length - 1 ? 'disabled' : ''} aria-label="${esc(t('moveDown', sName(s)))}">${ICON.down}</button>` : ''}
+        <div class="prog-session-head">${all.length > 1 ? `<button class="drag-h" data-drag="session" data-session="${esc(s.id)}" aria-label="${esc(t('dragX', sName(s)))}">${ICON.grip}</button>` : ''}<span class="pchip" aria-hidden="true"></span><div class="grow"><h3>${esc(sName(s))}</h3><div class="small muted">${esc(sFocus(s))}</div></div>
           <button class="btn sm soft" data-act="edit-session" data-session="${esc(s.id)}">${t('edit')}</button></div>
         ${exs || `<p class="muted" style="padding:12px 0 0">${t('noExercises')}</p>`}
         <button class="btn sm soft" style="margin-top:10px" data-act="add-ex" data-session="${esc(s.id)}">${ICON.plus}${t('addExercise')}</button>
@@ -1080,7 +1093,7 @@
         <p class="small">${t('coachText')}</p>
         <div class="row wrap"><button class="btn primary" data-act="coach-sheet">${ICON.sparkle}${t('askCoach')}</button><button class="btn" data-act="import-sheet">${t('importReply')}</button></div>
       </div>
-      ${secs}
+      <div class="prog-list" id="prog-list">${secs}</div>
       <button class="btn wide" style="margin-top:18px" data-act="edit-session">${ICON.plus}${t('addSession')}</button>`;
   }
 
@@ -1138,7 +1151,10 @@
       if (!prevSets.length) return;
       const bestW = Math.max(...prevSets.map((x) => x.w));
       const bestR = Math.max(0, ...prevSets.filter((x) => x.w === top.w).map((x) => x.r));
-      if (top.w > bestW || (top.w === bestW && top.r > bestR)) prs.push({ name: entryName(e), val: `${fmtWeight(top.w)} kg × ${top.r}` });
+      if (top.w > bestW || (top.w === bestW && top.r > bestR)) {
+        const ts = e.sets.find((x) => x.w != null && +x.w === top.w && +x.r === top.r) || { w: top.w };
+        prs.push({ name: entryName(e), val: entryLb(e) ? `${setLb(ts)} lb (${fmtWeight(top.w)} kg) × ${top.r}` : `${fmtWeight(top.w)} kg × ${top.r}` });
+      }
     });
     return { mins: Math.max(1, Math.round((w.end - w.start) / 60000)), sets, volume: Math.round(volume), prs };
   }
@@ -1279,6 +1295,22 @@
       : /press|front raise|arnold/.test(n) ? ['front-delts', 'side-delts'] : null;
     return mapMuscles(list.map((m) => (m === 'shoulders' && head ? head.join(',') : m)).join(',').split(','));
   }
+  // Swap the movement but keep the plan: sets, reps, rest and superset stay.
+  const KEY_TO_LIB = { chest: 'chest', lats: 'lats', traps: 'traps', 'lower-back': 'lower back', biceps: 'biceps', triceps: 'triceps', forearms: 'forearms', abs: 'abdominals', obliques: 'abdominals', quads: 'quadriceps', hamstrings: 'hamstrings', glutes: 'glutes', calves: 'calves', adductors: 'adductors', 'front-delts': 'shoulders', 'side-delts': 'shoulders', 'rear-delts': 'shoulders', 'upper-back': 'middle back' };
+  function swapMuscle(ex) {
+    const k = (ex.primary || [])[0];
+    if (k && KEY_TO_LIB[k]) return KEY_TO_LIB[k];
+    const e = ex.library && LIB_BY_ID.get(ex.library);
+    return e && e.p && e.p[0] ? e.p[0] : 'all';
+  }
+  function swapDraft(d, libId) {
+    const old = d.ex;
+    const fresh = newExerciseDraft(d.sessionId, libId).ex;
+    if (!d.swapFrom) d.swapFrom = exName(old);
+    d.ex = Object.assign(fresh, { id: old.id, sets: old.sets, reps: old.reps, rest: old.rest, supersetWithNext: !!old.supersetWithNext });
+    d.swapped = true;
+    d.libMode = null;
+  }
   function newExerciseDraft(sessionId, libId) {
     const e = libId ? LIB_BY_ID.get(libId) : null;
     const primary = e ? libMuscles(e, e.p) : [];
@@ -1299,6 +1331,8 @@
     const ar = ex.ar || {};
     openSheet(`
       <h3>${draft.isNew ? t('newExercise') : t('editExercise')}</h3>
+      ${draft.swapFrom ? `<div class="note swap-note">${ICON.swap}<span>${esc(t('swappedNote', draft.swapFrom, exName(ex)))}</span></div>` : ''}
+      ${draft.isNew ? '' : `<button type="button" class="btn soft wide swap-btn" data-act="swap-ex">${ICON.swap}${t('swapEx')}</button>`}
       <form id="ex-form" autocomplete="off">
         ${L() ? `<label class="field"><span>${t('nameArF')}</span><input name="arname" value="${esc(ar.name || arByName(ex.name))}"></label>` : ''}
         <label class="field"><span>${L() ? t('nameEnF') : t('nameF')}</span><input name="name" dir="auto" value="${esc(ex.name)}" required ${draft.isNew && !ex.name ? 'autofocus' : ''}>${L() ? `<div class="help">${t('nameEnHelp')}</div>` : ''}</label>
@@ -1369,6 +1403,12 @@
       s.exercises.push(clone(ex));
     } else {
       const i = s.exercises.findIndex((e) => e.id === d.origId);
+      if (d.swapped) {
+        // A different movement gets its own id, so the old exercise's history stays with the old exercise.
+        const base = slug(ex.name); let id = base, n = 2;
+        while (s.exercises.some((e) => e.id === id && e.id !== d.origId)) id = `${base}-${n++}`;
+        ex.id = id;
+      }
       s.exercises[i] = clone(ex);
     }
     // The same exercise in another session is the same machine, so it gets the same unit.
@@ -1376,7 +1416,7 @@
     saveProgram();
     closeSheet();
     render();
-    toast(d.isNew ? t('addedTo', exName(ex), sName(s)) : t('exSaved'));
+    toast(d.isNew ? t('addedTo', exName(ex), sName(s)) : d.swapped ? t('swapSaved', d.swapFrom, exName(ex)) : t('exSaved'));
     if (navigator.onLine) prefetchPhotos();
   }
 
@@ -1396,7 +1436,8 @@
     const f = ui.lib;
     f.shown = LIB_PAGE;
     const chipRow = (act, items, cur) => `<div class="chip-scroll" role="group">${items.map(([v, l]) => `<button type="button" class="chip" data-act="${act}" data-v="${esc(v)}" aria-pressed="${v === cur}">${esc(l)}</button>`).join('')}</div>`;
-    openSheet(`<h3>${mode === 'photo' ? t('chooseAPhoto') : t('addAnExercise')}</h3>
+    openSheet(`<h3>${mode === 'photo' ? t('chooseAPhoto') : mode === 'swap' ? esc(t('swapFor', exName(sheetState.ex))) : t('addAnExercise')}</h3>
+      ${mode === 'swap' ? `<p class="small muted">${t('swapHelp')}</p>` : ''}
       <label class="field"><span>${esc(t('searchN', LIBRARY.length))}</span><input type="search" id="lib-q" dir="auto" placeholder="${esc(t('searchPh'))}" value="${esc(f.q)}"></label>
       <p class="filter-label">${t('libMuscle')}</p>
       ${chipRow('lib-muscle', [['all', t('allF')], ...LIB_MUSCLES.map((m) => [m, libMuscleName(m)])], f.muscle)}
@@ -1406,7 +1447,7 @@
       <div class="lib-bar"><p class="small muted" id="lib-count"></p>${mode === 'add' ? `<button class="btn sm soft" data-act="blank-ex">${ICON.plus}${t('blankEx')}</button>` : ''}</div>
       <ul class="results lib-results" id="lib-results"></ul>
       <div id="lib-more"></div>
-      <button class="btn ghost wide" data-act="${mode === 'photo' ? 'back-to-edit' : 'close-sheet'}">${mode === 'photo' ? t('backBtn') : t('cancel')}</button>`, keep);
+      <button class="btn ghost wide" data-act="${mode === 'add' ? 'close-sheet' : 'back-to-edit'}">${mode === 'add' ? t('cancel') : t('backBtn')}</button>`, keep);
     renderLibResults();
   }
   // Normal gym lifts by default; jumps, Olympic lifts, strongman, stretches and cardio only when asked.
@@ -1663,7 +1704,7 @@
     add('   - "library" is the exact name of an exercise in Free Exercise DB (github.com/yuhonas/free-exercise-db) that shows the same movement, so my app can show its photos. Use null if nothing fits.');
     add('   - Keep the name exactly the same for every exercise you keep, so my history stays linked. For exercises you keep you can leave out "steps"; write 3–6 short steps for every new exercise.');
     if (L()) add('   - Include "ar" with the Arabic name, cue and steps for every new or changed exercise. Keep "name" in English.');
-    add('   - To only add exercises to one session, you can instead send {"session": "Session name", "exercises": [ ... ]}.');
+    add('   - To change only one session, you can instead send {"session": "Session name", "exercises": [ ... ]} with that session\'s complete new list of exercises, in order. It replaces the session\'s exercises.');
     add("3. If my program shouldn't change, say so and leave out the JSON.");
     add();
     add('My current program as JSON (for exact names):');
@@ -1758,10 +1799,13 @@
           <button class="btn primary big" data-act="apply-import">${t('replaceProgram')}</button>`;
       } else {
         const target = preview.target || (sessions()[0] && sessions()[0].id);
-        body = `<div class="panel"><h3>${esc(t('nToAdd', preview.exercises.length))}</h3>
+        const mode = preview.mode || 'replace';
+        body = `<div class="panel"><h3>${esc(t('nImported', preview.exercises.length))}</h3>
           ${preview.exercises.map((e) => `<p class="small">${esc(exName(e))}: ${e.sets} × <bdi>${esc(repsL(e.reps))}</bdi></p>`).join('')}
-          <label class="field"><span>${t('addToSession')}</span><select id="import-target">${sessions().map((s) => `<option value="${esc(s.id)}" ${s.id === target ? 'selected' : ''}>${esc(sName(s))}</option>`).join('')}</select></label></div>${warn}
-          <button class="btn primary big" data-act="apply-import">${t('addExercises')}</button>`;
+          <label class="field"><span>${t('importSession')}</span><select id="import-target">${sessions().map((s) => `<option value="${esc(s.id)}" ${s.id === target ? 'selected' : ''}>${esc(sName(s))} (${esc(t('sessionsN', s.exercises.length))})</option>`).join('')}</select></label>
+          <div class="seg" style="--n:2"><label><input type="radio" name="import-mode" value="replace" ${mode === 'replace' ? 'checked' : ''}><span>${t('modeReplace')}</span></label><label><input type="radio" name="import-mode" value="add" ${mode === 'add' ? 'checked' : ''}><span>${t('modeAdd')}</span></label></div>
+          <p class="help" id="import-mode-help">${t(mode === 'add' ? 'modeAddHelp' : 'modeReplaceHelp')}</p></div>${warn}
+          <button class="btn primary big" data-act="apply-import">${t('applyImport')}</button>`;
       }
     }
     openSheet(`<h3>${t('importT')}</h3>
@@ -1817,12 +1861,21 @@
       toast(t('replaced'));
     } else {
       const s = sessionById($('#import-target').value);
+      const mode = (document.querySelector('input[name="import-mode"]:checked') || {}).value || 'replace';
+      const before = clone(s.exercises);
+      if (mode === 'replace') s.exercises = [];
       p.exercises.forEach((ex) => {
         let id = ex.id, n = 2;
         while (s.exercises.some((e) => e.id === id)) id = `${ex.id}-${n++}`;
-        s.exercises.push(Object.assign({}, ex, { id }));
+        s.exercises.push(Object.assign({}, clone(ex), { id }));
       });
-      toast(t('addedN', p.exercises.length, sName(s)));
+      saveProgram(); closeSheet(); render();
+      toast(mode === 'replace' ? t('replacedN', sName(s), p.exercises.length) : t('addedN', p.exercises.length, sName(s)), { label: t('undo'), fn: () => {
+        const s2 = sessionById(s.id); if (!s2) return;
+        s2.exercises = before; saveProgram(); render(); toast(t('restoredX', sName(s2)));
+      } });
+      if (navigator.onLine) prefetchPhotos();
+      return;
     }
     saveProgram();
     closeSheet();
@@ -2126,6 +2179,110 @@
     });
   }
 
+  // ---------- Drag to reorder (Program page) ----------
+  // Grab the dotted handle and drag. Sessions fold to their headers while one is dragged.
+  // The handle also works with the keyboard: arrow up and down.
+  let drag = null;
+  function moveInList(list, from, to) { const [x] = list.splice(from, 1); list.splice(to, 0, x); }
+  function applyMove(kind, sid, exId, from, to) {
+    if (from === to || to < 0) return;
+    if (kind === 'session') { if (to >= program.sessions.length) return; moveInList(program.sessions, from, to); ui.movedSession = sid; }
+    else { const s = sessionById(sid); if (!s || to >= s.exercises.length) return; moveInList(s.exercises, from, to); ui.movedEx = `${sid}:${exId}`; }
+    saveProgram(); render(); ui.movedSession = null; ui.movedEx = null;
+  }
+  function dragStart(e, handle) {
+    const list = $('#prog-list');
+    if (!list || drag) return;
+    e.preventDefault();
+    const kind = handle.dataset.drag;
+    const sel = kind === 'session' ? '.prog-session' : '.prog-ex';
+    const item = handle.closest(sel);
+    if (kind === 'session') {
+      // Fold, then scroll so the session stays under the finger. Near the bottom of the page
+      // there may be no room left to scroll, so add some space below the list while dragging.
+      list.classList.add('sorting');
+      const r = item.getBoundingClientRect();
+      const want = window.scrollY + r.top + r.height / 2 - e.clientY;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      if (want > max) list.style.paddingBottom = `${Math.ceil(want - max)}px`;
+      window.scrollTo(0, Math.max(0, want));
+    }
+    const parent = item.parentElement;
+    const items = [...parent.children].filter((el) => el.matches(sel));
+    const sy = window.scrollY;
+    const rects = items.map((el) => { const r = el.getBoundingClientRect(); return { top: r.top + sy, h: r.height }; });
+    const from = items.indexOf(item);
+    const gap = items.length > 1 ? Math.max(0, rects[1].top - rects[0].top - rects[0].h) : 0;
+    const c0 = rects[from].top + rects[from].h / 2;
+    drag = { kind, sid: handle.dataset.session, exId: handle.dataset.ex, list, parent, item, items, rects, from, to: from,
+      step: rects[from].h + gap, c0, grab: e.clientY + sy - c0, y: e.clientY, handle, id: e.pointerId };
+    parent.classList.add('sort-ctx');
+    item.classList.add('dragging');
+    document.body.classList.add('is-dragging');
+    try { handle.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+    if (navigator.vibrate) navigator.vibrate(12);
+    dragUpdate();
+    drag.raf = requestAnimationFrame(dragScroll);
+  }
+  function dragUpdate() {
+    const d = drag;
+    const center = d.y + window.scrollY - d.grab;
+    d.item.style.transform = `translateY(${(center - d.c0).toFixed(1)}px) scale(1.02)`;
+    let to = 0;
+    d.rects.forEach((r, i) => { if (i !== d.from && center > r.top + r.h / 2) to++; });
+    if (to === d.to) return;
+    d.to = to;
+    d.items.forEach((el, i) => {
+      if (i === d.from) return;
+      const shift = d.from < to && i > d.from && i <= to ? -d.step : to < d.from && i >= to && i < d.from ? d.step : 0;
+      el.style.transform = shift ? `translateY(${shift}px)` : '';
+    });
+    if (navigator.vibrate) navigator.vibrate(6);
+  }
+  function dragScroll() {
+    if (!drag) return;
+    const edge = 80, bottom = window.innerHeight - 96;
+    const v = drag.y < edge ? -Math.ceil((edge - drag.y) / 5) : drag.y > bottom - edge ? Math.ceil((drag.y - (bottom - edge)) / 5) : 0;
+    if (v) { window.scrollBy(0, v); dragUpdate(); }
+    drag.raf = requestAnimationFrame(dragScroll);
+  }
+  function dragEnd(cancel) {
+    const d = drag;
+    if (!d) return;
+    drag = null;
+    cancelAnimationFrame(d.raf);
+    d.items.forEach((el) => { el.style.transform = ''; });
+    d.item.classList.remove('dragging');
+    d.parent.classList.remove('sort-ctx');
+    d.list.classList.remove('sorting');
+    d.list.style.paddingBottom = '';
+    document.body.classList.remove('is-dragging');
+    if (cancel || d.to === d.from) return;
+    applyMove(d.kind, d.sid, d.exId, d.from, d.to);
+    const el = d.kind === 'session' ? document.getElementById(`ps-${d.sid}`) : document.querySelector(`.prog-ex.moved`);
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' });
+    toast(t('orderSaved'));
+  }
+  document.addEventListener('pointerdown', (e) => {
+    const h = e.target.closest('[data-drag]');
+    if (h && (e.pointerType !== 'mouse' || e.button === 0)) dragStart(e, h);
+  });
+  document.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) { drag.y = e.clientY; dragUpdate(); } });
+  document.addEventListener('pointerup', (e) => { if (drag && e.pointerId === drag.id) dragEnd(false); });
+  document.addEventListener('pointercancel', (e) => { if (drag && e.pointerId === drag.id) dragEnd(true); });
+  document.addEventListener('keydown', (e) => {
+    const h = e.target.closest && e.target.closest('[data-drag]');
+    if (!h || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    const dir = e.key === 'ArrowUp' ? -1 : 1;
+    const { drag: kind, session: sid, ex: exId } = h.dataset;
+    const list = kind === 'session' ? program.sessions : (sessionById(sid) || {}).exercises || [];
+    const from = list.findIndex((x) => x.id === (kind === 'session' ? sid : exId));
+    applyMove(kind, sid, exId, from, from + dir);
+    const again = document.querySelector(kind === 'session' ? `[data-drag="session"][data-session="${sid}"]` : `[data-drag="ex"][data-session="${sid}"][data-ex="${exId}"]`);
+    if (again) again.focus();
+  });
+
   // ---------- Events ----------
   document.addEventListener('click', async (e) => {
     const el = e.target.closest('[data-act]');
@@ -2186,6 +2343,7 @@
       case 'blank-ex': sheetEditExercise(newExerciseDraft(sheetState.libSession, null)); break;
       case 'lib-choose': {
         if (sheetState && sheetState.libMode === 'photo' && sheetState.ex) { sheetState.ex.library = el.dataset.lib; delete sheetState.ex.photo; sheetState.libMode = null; sheetEditExercise(sheetState); }
+        else if (sheetState && sheetState.libMode === 'swap' && sheetState.ex) { swapDraft(sheetState, el.dataset.lib); sheetEditExercise(sheetState); }
         else { const d = newExerciseDraft(sheetState.libSession, el.dataset.lib); d.fromLib = true; sheetEditExercise(d); }
         break;
       }
@@ -2197,6 +2355,7 @@
       case 'lib-more': ui.lib.shown += LIB_PAGE; renderLibResults(); break;
       case 'back-to-lib': sheetState = { sessionId: sheetState.sessionId }; sheetLibrary('add', sheetState.sessionId); break;
       case 'lib-photo': readExerciseForm(); sheetLibrary('photo', sheetState.sessionId); break;
+      case 'swap-ex': readExerciseForm(); Object.assign(ui.lib, { q: '', muscle: swapMuscle(sheetState.ex), eq: 'all', all: false }); sheetLibrary('swap', sheetState.sessionId); break;
       case 'back-to-edit': sheetState.libMode = null; sheetEditExercise(sheetState); break;
       case 'no-photo': readExerciseForm(); sheetState.ex.library = null; delete sheetState.ex.photo; sheetEditExercise(sheetState); break;
       case 'delete-ex': {
@@ -2291,6 +2450,7 @@
     const el = e.target;
     if (el.id === 'lib-all') { setLibFilter('all', el.checked); return; }
     if (el.dataset.unitEx) { setExUnit(el.dataset.unitEx, el.value); return; }
+    if (el.name === 'import-mode') { const h = $('#import-mode-help'); if (h) h.textContent = t(el.value === 'add' ? 'modeAddHelp' : 'modeReplaceHelp'); if (sheetState && sheetState.importPreview) sheetState.importPreview.mode = el.value; return; }
     if (el.dataset.act === 'restore' && el.files[0]) { await restore(el.files[0]); el.value = ''; }
     if (el.dataset.act === 'own-photo' && el.files[0]) {
       readExerciseForm();

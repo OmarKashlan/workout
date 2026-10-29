@@ -160,10 +160,15 @@ Keep the big lifts for months. Swapping small exercises after a block or two is 
 ### History
 - **Workouts:** every workout on a timeline. Open one to see all sets, **Change date** (for a workout you logged later) or delete it.
 - **Exercises:** each exercise with a progress line (your heaviest set each time, or total reps for bodyweight work).
+- Exercises set to **lb** show their weights in lb everywhere in History, with kg in brackets (for example `110 lb (49.9 kg) × 12`). This also applies to workouts you logged in kg before switching the exercise to lb.
 
 ### Program
 - **AI coach** panel (see below).
-- Edit, reorder, add or delete exercises and sessions. The **arrows next to each session** change the rotation order, shown at the top of the page (for example Upper A › Lower A › Upper B › Lower B).
+- Each exercise shows its **photo**. Tap it to see the movement full screen; tap the name to edit.
+- **Reorder by dragging:** hold the **dotted handle** (⠿) on the left of a session or exercise and drag it up or down. While you drag a session, all sessions fold to their titles so they fit on the screen. The page scrolls by itself when you reach the top or bottom. With a keyboard, focus the handle and press the up or down arrow.
+- The session order is the rotation order, shown at the top of the page (for example Upper A › Lower A › Upper B › Lower B).
+- Edit, add or delete exercises and sessions.
+- **Swap for another exercise:** open an exercise, tap **Swap for another exercise**, and the library opens on the same muscle. Pick one and tap **Save**. Sets, reps, rest and superset stay the same; the photo, steps, muscles and Arabic text come from the new exercise. The new exercise starts its own history; the old one's history stays in History.
 - Deleted an exercise or session by mistake? Tap **Undo** on the message that appears (it stays for about 8 seconds).
 - **Add exercise** opens a built-in library of **873 exercises** that works offline. You don't need to know names:
   - filter by **muscle** (chest, shoulders, lats, quads, hamstrings, glutes, calves, abs, …) and **equipment** (machine, cable, dumbbell, barbell, bodyweight, other);
@@ -205,6 +210,12 @@ You don't need to know what to ask. The app writes the prompt for you.
 2. Add a note if you like, tap **Copy prompt**, paste it into Claude or ChatGPT.
 3. Copy the coach's **whole reply**, then **Program → Import reply → Check the import →** confirm.
 
+When the reply is a **list of exercises for one session**, the check shows which session they go into (you can change it) and asks how:
+- **Replace all** (the default): the session's exercises become exactly the coach's list, in that order.
+- **Add to end**: the coach's exercises are added after the ones already there.
+
+Either way, tap **Undo** on the message after importing to get the old list back.
+
 The prompt contains your profile, how the app works, your whole program, your training log (frequency, recent workouts), every exercise's recent sets and best set, which exercises are improving or stuck, and the exact reply format. In Arabic mode the coach is asked to explain in Arabic and include Arabic exercise text.
 
 Exercises that keep the **same name keep their history**. Steps, photos, Arabic text and the lb setting you already have are kept when the coach leaves them out. The prompt also tells the coach how you log weight (one dumbbell, the stack number, barbell total) and which machines are in pounds.
@@ -242,7 +253,7 @@ A full program:
 }
 ```
 
-Or only new exercises for one session: `{"session": "Upper B", "exercises": [ ... ]}`.
+Or one session's complete list of exercises, in order: `{"session": "Upper B", "exercises": [ ... ]}`. By default this replaces that session's exercises (see above).
 
 - Muscles: `chest, front-delts, side-delts, rear-delts, traps, upper-back, lats, lower-back, biceps, triceps, forearms, abs, obliques, glutes, quads, hamstrings, adductors, calves`.
 - `library` is the name of an exercise in [Free Exercise DB](https://github.com/yuhonas/free-exercise-db), used for the photos.
